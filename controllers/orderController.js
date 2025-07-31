@@ -6,6 +6,10 @@ export const placeOrder = async (req, res) => {
     const { serviceId, name, quantity, price, notes, pickupDelivery } =
       req.body;
 
+    // 🔢 Generate a 4-digit OTP
+    const generateOTP = () =>
+      Math.floor(1000 + Math.random() * 9000).toString();
+
     const newOrder = new Order({
       userId: req.user.uid,
       serviceId,
@@ -15,12 +19,42 @@ export const placeOrder = async (req, res) => {
       notes,
       pickupDelivery,
       status: "Scheduled",
+      otp: generateOTP(), // ✅ Add OTP here
     });
 
     await newOrder.save();
-    res.status(201).json({ message: "Order placed", order: newOrder });
+
+    // ✅ Only send the OTP to the user, not to delivery boy later
+    res
+      .status(201)
+      .json({ message: "Order placed", order: newOrder, otp: newOrder.otp });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+};
+
+export const verifyOtpAndCompleteOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { otp } = req.body;
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (order.claimedBy !== req.user.uid) {
+      return res.status(403).json({ message: "Not authorized for this order" });
+    }
+
+    if (order.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    order.status = "Picked Up";
+    await order.save();
+
+    res.json({ message: "Order marked as completed", order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -59,15 +93,6 @@ export const trackOrder = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-//  Get All Orders (for delivery boys)
-export const getAllOrders = async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ date: -1 });
-    res.json({ orders });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
 
 // Update Order Status (for delivery boys)
 export const updateOrderStatus = async (req, res) => {
@@ -101,5 +126,19 @@ export const updateOrderStatus = async (req, res) => {
     res.json({ message: "Order updated", order });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+// 🔽 Get Unclaimed Orders (for delivery boys)
+export const getUnclaimedOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({
+      claimedBy: null,
+      status: { $in: ["Scheduled", "In Progress"] },
+    }).sort({ date: -1 });
+
+    res.json({ orders });
+  } catch (error) {
+    console.error("Error fetching unclaimed orders:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

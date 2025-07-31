@@ -1,22 +1,25 @@
-import express from 'express';
+import express from "express";
 import {
   placeOrder,
   getUserOrders,
   trackOrder,
-  getAllOrders,         // ✅ NEW
-  updateOrderStatus     // ✅ NEW
-} from '../controllers/orderController.js';
+  updateOrderStatus,
+  getUnclaimedOrders,
+  verifyOtpAndCompleteOrder,
+} from "../controllers/orderController.js";
+import { verifyToken } from "../middlewares/jwtHelper.js";
 
 const router = express.Router();
 
-import { verifyFirebaseToken } from '../middlewares/authMiddleware.js';
+import { verifyFirebaseToken } from "../middlewares/authMiddleware.js";
 
-router.post('/place', verifyFirebaseToken, placeOrder);
-router.get('/my-orders', verifyFirebaseToken, getUserOrders);
-router.get('/track/:orderId', verifyFirebaseToken, trackOrder);
+router.post("/place", verifyFirebaseToken, placeOrder);
+router.get("/my-orders", verifyFirebaseToken, getUserOrders);
+router.get("/track/:orderId", verifyFirebaseToken, trackOrder);
+router.post("/verify-otp/:orderId", verifyToken, verifyOtpAndCompleteOrder);
 
-// ✅ NEW public delivery-boy-related routes:
-router.get('/all', getAllOrders);
-router.patch('/:orderId/status', updateOrderStatus);
+router.get("/unclaimed", getUnclaimedOrders);
+
+router.patch("/:orderId/status", updateOrderStatus);
 
 export default router;

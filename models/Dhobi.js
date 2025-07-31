@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const deliveryBoySchema = new mongoose.Schema({
+const dhobiSchema = new mongoose.Schema({
   name: String,
   phone: { type: String, required: true, unique: true },
   email: String,
@@ -9,7 +9,6 @@ const deliveryBoySchema = new mongoose.Schema({
   rejected: { type: Boolean, default: false },
   photo: String,
   address: String,
-  claimedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
 });
 
-export default mongoose.model("DeliveryBoy", deliveryBoySchema);
+export default mongoose.model("Dhobi", dhobiSchema);

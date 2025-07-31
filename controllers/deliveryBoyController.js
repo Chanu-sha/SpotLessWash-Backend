@@ -1,12 +1,15 @@
 import bcrypt from "bcryptjs";
 import DeliveryBoy from "../models/DeliveryBoy.js";
+import { createToken } from "../middlewares/jwtHelper.js";
+import Order from "../models/Order.js";
 
 // Register
 export const registerDeliveryBoy = async (req, res) => {
   const { name, email, phone, password } = req.body;
   try {
     const existing = await DeliveryBoy.findOne({ email });
-    if (existing) return res.status(400).json({ message: "Email already used" });
+    if (existing)
+      return res.status(400).json({ message: "Email already used" });
 
     const hashed = await bcrypt.hash(password, 10);
     const newBoy = await DeliveryBoy.create({
@@ -22,6 +25,7 @@ export const registerDeliveryBoy = async (req, res) => {
 };
 
 // Login
+
 export const loginDeliveryBoy = async (req, res) => {
   const { phone, password } = req.body;
   try {
@@ -33,9 +37,36 @@ export const loginDeliveryBoy = async (req, res) => {
     const match = await bcrypt.compare(password, boy.password);
     if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
-    res.json({ message: "Login successful", boy });
+    const token = createToken({ uid: boy._id, role: "delivery" });
+    res.json({ message: "Login successful", token });
   } catch (err) {
     res.status(500).json({ message: "Login error" });
+  }
+};
+// Get profile
+export const getDeliveryBoyProfile = async (req, res) => {
+  try {
+    const user = await DeliveryBoy.findById(req.user.uid);
+    if (!user) return res.status(404).json({ message: "Not found" });
+    res.json(user);
+  } catch {
+    res.status(500).json({ message: "Error fetching profile" });
+  }
+};
+
+// Update profile
+export const updateDeliveryBoyProfile = async (req, res) => {
+  try {
+    const updated = await DeliveryBoy.findByIdAndUpdate(
+      req.user.uid,
+      req.body,
+      {
+        new: true,
+      }
+    );
+    res.json({ message: "Profile updated", user: updated });
+  } catch {
+    res.status(500).json({ message: "Error updating profile" });
   }
 };
 
@@ -59,7 +90,10 @@ export const getPendingRequests = async (req, res) => {
   }
 
   try {
-    const pending = await DeliveryBoy.find({ approved: false, rejected: false });
+    const pending = await DeliveryBoy.find({
+      approved: false,
+      rejected: false,
+    });
     res.json(pending);
   } catch {
     res.status(500).json({ message: "Error fetching" });
@@ -87,7 +121,10 @@ export const approveDeliveryBoy = async (req, res) => {
   }
 
   try {
-    await DeliveryBoy.findByIdAndUpdate(req.params.id, { approved: true, rejected: false });
+    await DeliveryBoy.findByIdAndUpdate(req.params.id, {
+      approved: true,
+      rejected: false,
+    });
     res.json({ message: "Approved successfully" });
   } catch {
     res.status(500).json({ message: "Error approving" });
@@ -101,9 +138,60 @@ export const rejectDeliveryBoy = async (req, res) => {
   }
 
   try {
-    await DeliveryBoy.findByIdAndUpdate(req.params.id, { rejected: true, approved: false });
+    await DeliveryBoy.findByIdAndUpdate(req.params.id, {
+      rejected: true,
+      approved: false,
+    });
     res.json({ message: "Rejected successfully" });
   } catch {
     res.status(500).json({ message: "Error rejecting" });
+  }
+};
+
+// Claim an order (Get this deal)
+export const claimOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // Get the delivery boy's info
+    const user = await DeliveryBoy.findById(req.user.uid);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Find the order
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    // Check if already claimed
+    if (order.claimedBy) {
+      return res.status(400).json({ message: "Order already claimed" });
+    }
+
+    // Update order
+    order.claimedBy = req.user.uid;
+    order.status = "Ready for Pickup";
+    await order.save();
+
+    // Add to delivery boy's claimed orders
+    user.claimedOrders.push(orderId);
+    await user.save();
+
+    res.json({ message: "Order claimed successfully", order });
+  } catch (error) {
+    console.error("Claim order error:", error);
+    res.status(500).json({ message: "Failed to claim order" });
+  }
+};
+
+// controllers/deliveryBoyController.js
+export const getMyDeals = async (req, res) => {
+  try {
+    const user = await DeliveryBoy.findById(req.user.uid).populate(
+      "claimedOrders"
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ orders: user.claimedOrders });
+  } catch {
+    res.status(500).json({ message: "Error fetching deals" });
   }
 };
