@@ -6,7 +6,7 @@ let serviceAccount;
 
 if (process.env.NODE_ENV === 'production') {
   // Render par deploy karte waqt secret file se read karo
-  serviceAccount = JSON.parse(fs.readFileSync('/run/secrets/firebase-service-account.json', 'utf8'));
+  serviceAccount = JSON.parse(fs.readFileSync('/var/render/secrets/firebase-service-account.json', 'utf8'));
 } else {
   // Local development ke liye file se read karo
   const serviceAccountPath = path.resolve('./firebase/serviceAccountKey.json');
