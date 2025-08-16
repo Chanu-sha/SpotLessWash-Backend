@@ -1,17 +1,16 @@
-// controllers/subscriptionController.js
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import Subscription from "../models/Subscription.js";
 import User from "../models/User.js";
-import dotenv from "dotenv";
-dotenv.config();
+
+// Hardcoded Razorpay credentials
+const RAZORPAY_KEY_ID = "rzp_test_R5tAaVVXbEw5iO";
+const RAZORPAY_KEY_SECRET = "aClcKsdj9AO0gBxPGvGCW3fs";
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
+  key_id: RAZORPAY_KEY_ID,
+  key_secret: RAZORPAY_KEY_SECRET,
 });
-
-
 
 // Create order for subscription
 export const createSubscriptionOrder = async (req, res) => {
@@ -45,7 +44,7 @@ export const confirmSubscription = async (req, res) => {
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .createHmac("sha256", RAZORPAY_KEY_SECRET)
       .update(body.toString())
       .digest("hex");
 
