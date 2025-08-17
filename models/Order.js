@@ -40,6 +40,8 @@ const orderSchema = new mongoose.Schema({
     ref: "Dhobi",
     default: null,
   },
+  paymentMethod: { type: String, enum: ["COD", "ONLINE"], default: "COD" },
+  paymentId: { type: String, default: null },
 
   date: { type: Date, default: Date.now },
 });
