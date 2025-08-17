@@ -13,7 +13,11 @@ import subscriptionRoutes from './routes/subscriptionRoutes.js';
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));app.use(express.json());
+app.use(cors({
+  origin: process.env.CLIENT_URL, 
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));app.use(express.json());
 
 // Connect to MongoDB
 connectDB();
