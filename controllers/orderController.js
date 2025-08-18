@@ -1,6 +1,6 @@
 import Order from "../models/Order.js";
+import User from "../models/User.js";
 
-// 🔽 Place New Order
 export const placeOrder = async (req, res) => {
   try {
     const {
@@ -11,16 +11,63 @@ export const placeOrder = async (req, res) => {
       address,
       pickupDelivery,
       mobile,
+      paymentMethod,
+      paymentId,
     } = req.body;
 
     if (!address || address.trim() === "") {
       return res.status(400).json({ message: "Address is required" });
     }
-
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       return res
         .status(400)
         .json({ message: "Valid 10-digit mobile number is required" });
+    }
+
+    const user = await User.findOne({ uid: req.user.uid });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    let finalPrice = price + pickupDelivery;
+    let paymentStatus = "Not Paid";
+    let isFreeOrder = false;
+
+    // ✅ Subscription check
+    if (
+      user.subscription.status === "active" &&
+      user.subscription.expiry &&
+      new Date(user.subscription.expiry) > new Date()
+    ) {
+      const today = new Date().toISOString().split("T")[0];
+      const usageDate = user.subscription.dailyUsage.date
+        ? user.subscription.dailyUsage.date.toISOString().split("T")[0]
+        : null;
+
+      // reset if it's a new day
+      if (!usageDate || usageDate !== today) {
+        user.subscription.dailyUsage.date = new Date();
+        user.subscription.dailyUsage.count = 0;
+      }
+
+      // ✅ Rule: Max 2 free orders per day
+      if (quantity > 1) {
+        return res.status(400).json({
+          message: "Subscribed users can only order 1 quantity per service.",
+        });
+      }
+
+      if (user.subscription.dailyUsage.count <= 2) {
+        finalPrice = 0; // free order
+        isFreeOrder = true;
+        paymentStatus = "Free (Subscribed)";
+        user.subscription.dailyUsage.count += 1;
+      }
+
+      await user.save();
+    }
+
+    // ✅ Online payment check
+    if (paymentMethod === "ONLINE" && paymentId && finalPrice > 0) {
+      paymentStatus = "Paid";
     }
 
     const generateOTP = () =>
@@ -31,23 +78,57 @@ export const placeOrder = async (req, res) => {
       serviceId,
       name,
       quantity,
-      price,
+      price: finalPrice,
       address,
-      mobile, // ✅ Add to order
+      mobile,
       pickupDelivery,
       status: "Scheduled",
       otp: generateOTP(),
+      paymentMethod,
+      paymentStatus,
+      paymentId: paymentId || null,
+      isFreeOrder,
     });
 
     await newOrder.save();
 
-    res
-      .status(201)
-      .json({ message: "Order placed", order: newOrder, otp: newOrder.otp });
+    res.status(201).json({
+      message: "Order placed successfully",
+      order: newOrder,
+      otp: newOrder.otp,
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error("❌ Order placement error:", error);
+    res.status(400).json({ message: error.message || "Failed to place order" });
   }
 };
+
+// ✅ Get today's order count
+export const getTodayOrderCount = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ message: "UserId is required" });
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const count = await Order.countDocuments({
+      userId,
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+
+    res.json({ count });
+  } catch (error) {
+    console.error("Error fetching today's order count:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 
 export const verifyOtpAndCompleteOrder = async (req, res) => {
   try {

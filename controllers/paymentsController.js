@@ -1,3 +1,4 @@
+import User from "../models/User.js";
 import crypto from "crypto";
 import { rzp, PLANS } from "../utils/razorpay.js";
 import Subscription from "../models/Subscription.js";
@@ -90,6 +91,7 @@ export const createOrder = async (req, res) => {
 // POST /api/payments/verify
 // body: { orderId, paymentId, signature, userId }
 // ------------------------------
+
 export const verifyPayment = async (req, res) => {
   try {
     const { orderId, paymentId, signature, userId } = req.body;
@@ -121,11 +123,25 @@ export const verifyPayment = async (req, res) => {
     const expiry = new Date(start);
     expiry.setDate(expiry.getDate() + days);
 
+    // Update Subscription record
     sub.status = "paid";
     sub.paymentId = paymentId;
     sub.start = start;
     sub.expiry = expiry;
     await sub.save();
+
+    // 🔹 Update User model
+    await User.findOneAndUpdate(
+      { uid: userId },
+      {
+        $set: {
+          "subscription.status": "active",
+          "subscription.plan": sub.plan,
+          "subscription.start": start,
+          "subscription.expiry": expiry,
+        },
+      }
+    );
 
     res.json({ success: true, plan: sub.plan, start, expiry });
   } catch (e) {

@@ -12,6 +12,7 @@ import {
   getDeliveryOrders,
   verifyOtpForDeliveryPickup,
   verifyOtpForFinalDelivery,
+  getTodayOrderCount,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 
@@ -46,5 +47,7 @@ router.post(
 );
 
 router.patch("/:orderId/status", updateOrderStatus);
+// Get today's order count for a user
+router.get("/todayCount",  getTodayOrderCount);
 
 export default router;

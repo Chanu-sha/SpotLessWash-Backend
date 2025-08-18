@@ -1,29 +1,39 @@
-import Subscription from '../models/Subscription.js';
+import User from "../models/User.js";
 
-// GET /api/subscription/status?userId=...
 export const getStatus = async (req, res) => {
   try {
     const { userId } = req.query;
-    if (!userId) return res.status(400).json({ error: 'userId required' });
+    if (!userId) return res.status(400).json({ error: "userId required" });
 
-    const sub = await Subscription.findOne({ userId, status: 'paid' })
-      .sort({ expiry: -1 })
-      .lean();
+    const user = await User.findOne({ uid: userId }).lean();
 
-    if (!sub) return res.json({ isSubscribed: false, remainingDays: 0 });
+    if (!user || !user.subscription || user.subscription.status !== "active") {
+      return res.json({ isSubscribed: false, remainingDays: 0 });
+    }
 
     const today = new Date();
-    const diff = new Date(sub.expiry).getTime() - today.getTime();
+    const expiry = new Date(user.subscription.expiry);
+
+    if (expiry < today) {
+      // Expired -> set inactive
+      await User.updateOne(
+        { uid: userId },
+        { "subscription.status": "inactive" }
+      );
+      return res.json({ isSubscribed: false, remainingDays: 0 });
+    }
+
+    const diff = expiry.getTime() - today.getTime();
     const remainingDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 
     res.json({
-      isSubscribed: remainingDays > 0,
+      isSubscribed: true,
       remainingDays,
-      plan: sub.plan,
-      expiry: sub.expiry,
+      plan: user.subscription.plan,
+      expiry: user.subscription.expiry,
     });
   } catch (e) {
-    console.error('getStatus error', e);
-    res.status(500).json({ error: 'Failed to get status' });
+    console.error("getStatus error", e);
+    res.status(500).json({ error: "Failed to get status" });
   }
 };

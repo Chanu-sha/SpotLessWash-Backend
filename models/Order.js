@@ -40,11 +40,20 @@ const orderSchema = new mongoose.Schema({
     ref: "Dhobi",
     default: null,
   },
-  paymentMethod: { type: String, enum: ["COD", "ONLINE"], default: "COD" },
   paymentId: { type: String, default: null },
+  paymentMethod: {
+    type: String,
+    enum: ["COD", "ONLINE", "SUBSCRIPTION"], 
+    required: true,
+  },
+  paymentStatus: {
+    type: String,
+    enum: ["Not Paid", "Paid", "Free (Subscribed)"],
+    default: "Not Paid",
+  },
 
   date: { type: Date, default: Date.now },
-});
+},{ timestamps: true });
 
 const Order = mongoose.model("Order", orderSchema);
 export default Order;
