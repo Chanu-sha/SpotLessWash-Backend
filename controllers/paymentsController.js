@@ -5,9 +5,15 @@ import Razorpay from "razorpay";
 import dotenv from "dotenv";
 dotenv.config();
 
+// ------------------------------
+// POST /api/payments/createOnlineorder
+// body: { amount: number }
+// ------------------------------
 export const createRazorpayOrder = async (req, res) => {
   try {
-    const { amount } = req.body;
+    let { amount } = req.body;
+    amount = Number(amount);
+
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: "Invalid amount" });
     }
@@ -18,35 +24,37 @@ export const createRazorpayOrder = async (req, res) => {
     });
 
     const options = {
-      amount: amount * 100, 
+      amount: Math.round(amount * 100), // convert to paise
       currency: "INR",
-      receipt: "order_rcptid_" + Date.now(),
+      receipt: `order_rcptid_${Date.now()}`,
     };
 
     const order = await instance.orders.create(options);
     res.json({ orderId: order.id, amount: order.amount });
   } catch (err) {
     console.error("createRazorpayOrder error:", err);
-    res
-      .status(500)
-      .json({ error: "Failed to create Razorpay order", details: err.message });
+    res.status(500).json({
+      error: "Failed to create Razorpay order",
+      details: err.message,
+    });
   }
 };
 
-// ==============================
+// ------------------------------
 // POST /api/payments/create-order
 // body: { plan: 'monthly'|'annual', userId: string }
-// ==============================
+// ------------------------------
 export const createOrder = async (req, res) => {
   try {
     const { plan, userId } = req.body;
+
     if (!plan || !userId || !PLANS[plan]) {
       return res.status(400).json({ error: "Invalid plan or userId" });
     }
 
     const { amount } = PLANS[plan];
 
-    // ✅ fix: Razorpay receipt max 40 chars
+    // Razorpay receipt limit = 40 chars
     const shortUserId = userId.slice(0, 8);
     const receipt = `rcpt_${shortUserId}_${Date.now().toString().slice(-6)}`;
 
@@ -78,15 +86,16 @@ export const createOrder = async (req, res) => {
   }
 };
 
-// ==============================
+// ------------------------------
 // POST /api/payments/verify
 // body: { orderId, paymentId, signature, userId }
-// ==============================
+// ------------------------------
 export const verifyPayment = async (req, res) => {
   try {
     const { orderId, paymentId, signature, userId } = req.body;
+
     if (!orderId || !paymentId || !signature || !userId) {
-      return res.status(400).json({ error: "Missing fields" });
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
     const hmac = crypto
@@ -103,8 +112,9 @@ export const verifyPayment = async (req, res) => {
     }
 
     const sub = await Subscription.findOne({ orderId, userId });
-    if (!sub)
+    if (!sub) {
       return res.status(404).json({ error: "Subscription record not found" });
+    }
 
     const days = PLANS[sub.plan].days;
     const start = new Date();
@@ -124,14 +134,14 @@ export const verifyPayment = async (req, res) => {
   }
 };
 
-// ==============================
+// ------------------------------
 // POST /api/payments/webhook
 // Razorpay Webhook (payment.captured)
-// ==============================
+// ------------------------------
 export const webhook = async (req, res) => {
   try {
     const razorpaySignature = req.headers["x-razorpay-signature"];
-    const bodyBuf = req.body; // raw buffer (make sure middleware is set correctly)
+    const bodyBuf = req.body; // raw buffer from express.raw()
 
     const expected = crypto
       .createHmac("sha256", process.env.WEBHOOK_SECRET)
