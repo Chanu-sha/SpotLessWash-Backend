@@ -31,7 +31,16 @@ export const placeOrder = async (req, res) => {
     let paymentStatus = "Not Paid";
     let isFreeOrder = false;
 
-    // ✅ Subscription check
+    // ✅ Original payment status logic from first code
+    if (paymentMethod === "COD") {
+      paymentStatus = "Not Paid";
+    } else if (paymentMethod === "ONLINE") {
+      paymentStatus = "Paid";
+    } else if (paymentMethod === "SUBSCRIPTION") {
+      paymentStatus = "Free (Subscribed)";
+    }
+
+    // ✅ Subscription check (from second code)
     if (
       user.subscription.status === "active" &&
       user.subscription.expiry &&
@@ -65,7 +74,7 @@ export const placeOrder = async (req, res) => {
       await user.save();
     }
 
-    // ✅ Online payment check
+    // ✅ Online payment check (from second code)
     if (paymentMethod === "ONLINE" && paymentId && finalPrice > 0) {
       paymentStatus = "Paid";
     }
@@ -102,7 +111,6 @@ export const placeOrder = async (req, res) => {
     res.status(400).json({ message: error.message || "Failed to place order" });
   }
 };
-
 // ✅ Get today's order count
 export const getTodayOrderCount = async (req, res) => {
   try {
@@ -128,7 +136,6 @@ export const getTodayOrderCount = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 export const verifyOtpAndCompleteOrder = async (req, res) => {
   try {
