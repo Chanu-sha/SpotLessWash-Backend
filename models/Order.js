@@ -1,59 +1,42 @@
 import mongoose from "mongoose";
 
+const serviceSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  price: { type: Number, default: 0 },
+  quantity: { type: Number, default: 1 },
+});
+
 const orderSchema = new mongoose.Schema({
   userId: { type: String, required: true },
-  serviceId: {
+  userName: { type: String, required: true },
+  userMobile: { type: String, required: true },
+  userAddress: { type: String, required: true },
+  vendorId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Service",
+    ref: "Vendor",
     required: true,
   },
-  name: { type: String, required: true },
-  quantity: { type: Number, required: true, min: 1 },
-  price: { type: Number, required: true },
-  mobile: { type: String, required: true },
-  address: { type: String, required: true },
-  otp: { type: String },
-  pickupDelivery: { type: Number, required: true },
-  status: {
-    type: String,
-    enum: [
-      "Scheduled",
-      "In Progress",
-      "Ready for Pickup",
-      "Picked Up",
-      "Washing",
-      "Washed",
-      "Picking Up",
-      "Delievery Picked Up",
-      "Delivered",
-      "Cancelled",
-    ],
-    default: "Scheduled",
+  vendorName: { type: String, required: true },
+  vendorAddress: { type: String, required: true, default: "Not Provided" },
+  services: { type: [serviceSchema], default: [] },
+  totalPrice: { type: Number, required: true },
+  otp: { type: String, required: true },
+  status: { type: String, default: "Scheduled" },
+  assignedDhobi: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Vendor",
   },
-  claimedBy: {
+  pickupClaimedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "DeliveryBoy",
     default: null,
   },
-  assignedDhobi: {
+  deliveryClaimedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Dhobi",
+    ref: "DeliveryBoy",
     default: null,
   },
-  paymentId: { type: String, default: null },
-  paymentMethod: {
-    type: String,
-    enum: ["COD", "ONLINE", "SUBSCRIPTION"], 
-    required: true,
-  },
-  paymentStatus: {
-    type: String,
-    enum: ["Not Paid", "Paid", "Free (Subscribed)"],
-    default: "Not Paid",
-  },
+  createdAt: { type: Date, default: Date.now },
+});
 
-  date: { type: Date, default: Date.now },
-},{ timestamps: true });
-
-const Order = mongoose.model("Order", orderSchema);
-export default Order;
+export default mongoose.model("Order", orderSchema);

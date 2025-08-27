@@ -1,221 +1,85 @@
 import Order from "../models/Order.js";
-import User from "../models/User.js";
+import Vendor from "../models/Vendor.js";
+import DeliveryBoy from "../models/DeliveryBoy.js";
 
+//  Generate 4-digit OTP
+function generateOTP() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Place Order
 export const placeOrder = async (req, res) => {
   try {
     const {
-      serviceId,
-      name,
-      quantity,
-      price,
-      address,
-      pickupDelivery,
-      mobile,
-      paymentMethod,
-      paymentId,
+      userName,
+      userMobile,
+      userAddress,
+      vendorId,
+      vendorName,
+      vendorAddress,
+      services,
+      assignedDhobi,
     } = req.body;
 
-    if (!address || address.trim() === "") {
-      return res.status(400).json({ message: "Address is required" });
-    }
-    if (!mobile || !/^\d{10}$/.test(mobile)) {
+    // Validation
+    if (!/^\d{10}$/.test(userMobile)) {
       return res
         .status(400)
-        .json({ message: "Valid 10-digit mobile number is required" });
+        .json({ message: "Please enter valid 10 digit mobile number" });
+    }
+    if (!userAddress || userAddress.trim() === "") {
+      return res.status(400).json({ message: "Please enter valid address" });
     }
 
-    const user = await User.findOne({ uid: req.user.uid });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    let totalPrice = services.reduce(
+      (sum, s) => sum + (s.price || 0) * (s.quantity || 1),
+      0
+    );
 
-    let finalPrice = price + pickupDelivery;
-    let paymentStatus = "Not Paid";
-    let isFreeOrder = false;
+    const otp = generateOTP();
 
-    // ✅ Original payment status logic from first code
-    if (paymentMethod === "COD") {
-      paymentStatus = "Not Paid";
-    } else if (paymentMethod === "ONLINE") {
-      paymentStatus = "Paid";
-    } else if (paymentMethod === "SUBSCRIPTION") {
-      paymentStatus = "Free (Subscribed)";
-    }
-
-    // ✅ Subscription check (from second code)
-    if (
-      user.subscription.status === "active" &&
-      user.subscription.expiry &&
-      new Date(user.subscription.expiry) > new Date()
-    ) {
-      const today = new Date().toISOString().split("T")[0];
-      const usageDate = user.subscription.dailyUsage.date
-        ? user.subscription.dailyUsage.date.toISOString().split("T")[0]
-        : null;
-
-      // reset if it's a new day
-      if (!usageDate || usageDate !== today) {
-        user.subscription.dailyUsage.date = new Date();
-        user.subscription.dailyUsage.count = 0;
-      }
-
-      // ✅ Rule: Max 2 free orders per day
-      if (quantity > 1) {
-        return res.status(400).json({
-          message: "Subscribed users can only order 1 quantity per service.",
-        });
-      }
-
-      if (user.subscription.dailyUsage.count <= 2) {
-        finalPrice = 0; // free order
-        isFreeOrder = true;
-        paymentStatus = "Free (Subscribed)";
-        user.subscription.dailyUsage.count += 1;
-      }
-
-      await user.save();
-    }
-
-    // ✅ Online payment check (from second code)
-    if (paymentMethod === "ONLINE" && paymentId && finalPrice > 0) {
-      paymentStatus = "Paid";
-    }
-
-    const generateOTP = () =>
-      Math.floor(1000 + Math.random() * 9000).toString();
-
-    const newOrder = new Order({
+    const order = new Order({
       userId: req.user.uid,
-      serviceId,
-      name,
-      quantity,
-      price: finalPrice,
-      address,
-      mobile,
-      pickupDelivery,
+      userName,
+      userMobile,
+      userAddress,
+      vendorId,
+      vendorName,
+      vendorAddress,
+      services,
+      totalPrice,
+      otp,
       status: "Scheduled",
-      otp: generateOTP(),
-      paymentMethod,
-      paymentStatus,
-      paymentId: paymentId || null,
-      isFreeOrder,
+      assignedDhobi,
     });
 
-    await newOrder.save();
+    await order.save();
 
     res.status(201).json({
       message: "Order placed successfully",
-      order: newOrder,
-      otp: newOrder.otp,
+      order,
     });
   } catch (error) {
-    console.error("❌ Order placement error:", error);
-    res.status(400).json({ message: error.message || "Failed to place order" });
-  }
-};
-// ✅ Get today's order count
-export const getTodayOrderCount = async (req, res) => {
-  try {
-    const userId = req.query.userId;
-    if (!userId) {
-      return res.status(400).json({ message: "UserId is required" });
-    }
-
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const count = await Order.countDocuments({
-      userId,
-      createdAt: { $gte: startOfDay, $lte: endOfDay },
-    });
-
-    res.json({ count });
-  } catch (error) {
-    console.error("Error fetching today's order count:", error);
+    console.error("Order Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-export const verifyOtpAndCompleteOrder = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { otp } = req.body;
-
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    if (
-      !order.claimedBy ||
-      order.claimedBy.toString() !== req.user.uid.toString()
-    ) {
-      return res.status(403).json({ message: "Not authorized for this order" });
-    }
-
-    if (order.otp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
-    }
-
-    order.status = "Picked Up";
-    await order.save();
-
-    res.json({ message: "Order marked as completed", order });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-export const verifyOtpAndReceiveByDhobi = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { otp } = req.body;
-
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    if (
-      !order.assignedDhobi ||
-      order.assignedDhobi.toString() !== req.user.uid.toString()
-    ) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (order.otp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
-    }
-
-    order.status = "Washing";
-    await order.save();
-
-    res.json({ message: "Order marked as received", order });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// 🔽 Get All Orders for Logged-in User
+//  Get All Orders for Logged-in User
 export const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.user.uid }).sort({
       date: -1,
     });
 
-    const current = orders.filter((order) =>
-      [
-        "Scheduled",
-        "In Progress",
-        "Ready for Pickup",
-        "Picked Up",
-        "Washing",
-        "Washed",
-        "Picking Up",
-        "Delievery Picked Up",
-        "Delivered",
-        "Cancelled",
-      ].includes(order.status)
+    // Current orders = All except Delivered & Cancelled
+    const current = orders.filter(
+      (order) => !["Delivered", "Cancelled"].includes(order.status)
     );
+
+    // Past orders = only Delivered & Cancelled
     const past = orders.filter((order) =>
-      ["Delivered", "Completed", "Cancelled"].includes(order.status)
+      ["Delivered", "Cancelled"].includes(order.status)
     );
 
     res.json({ current, past });
@@ -224,7 +88,7 @@ export const getUserOrders = async (req, res) => {
   }
 };
 
-// 🔽 Get Specific Order
+//  Get Track Order
 export const trackOrder = async (req, res) => {
   try {
     const order = await Order.findOne({
@@ -278,7 +142,68 @@ export const updateOrderStatus = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-// 🔽 Get Unclaimed Orders (for delivery boys)
+
+//  Verify OTP and Complete Order (for pickup )
+export const verifyOtpAndCompleteOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { otp } = req.body;
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    // Check pickupClaimedBy authorization
+    if (
+      !order.pickupClaimedBy ||
+      order.pickupClaimedBy.toString() !== req.user.uid.toString()
+    ) {
+      return res.status(403).json({ message: "Not authorized for this order" });
+    }
+
+    if (order.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    //  Update status to Picked Up
+    order.status = "Picked Up";
+    await order.save();
+
+    res.json({ message: "Order marked as completed", order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Verify OTP and Receive Order by Vendor (for washing )
+export const verifyOtpAndReceiveByVendor = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { otp } = req.body;
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (
+      !order.assignedDhobi ||
+      order.assignedDhobi.toString() !== req.user.uid.toString()
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    if (order.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    order.status = "Washing";
+    await order.save();
+
+    res.json({ message: "Order marked as received", order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//  Get Unclaimed Orders (for delivery boys)
 export const getUnclaimedOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -293,46 +218,67 @@ export const getUnclaimedOrders = async (req, res) => {
   }
 };
 
-// controllers/orderController.js
+// getAssignedOrders (orders assigned to logged-in vendor)
 export const getAssignedOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ assignedDhobi: req.user.uid }).populate(
-      "claimedBy",
-      "name"
-    );
-    res.json({ orders });
+    const vendor = await Vendor.findById(req.user.uid);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    const orders = await Order.find({ assignedDhobi: vendor._id })
+      .populate("pickupClaimedBy", "name phone")
+      .populate("deliveryClaimedBy", "name phone")
+      .populate("assignedDhobi", "name phone address")
+      .sort({ createdAt: -1 }); 
+
+    res.json({ 
+      message: "Assigned orders fetched successfully", 
+      orders,
+      count: orders.length 
+    });
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch assigned orders" });
+    console.error("Error fetching assigned orders:", error);
+    res.status(500).json({ 
+      message: "Failed to fetch assigned orders",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
-export const getWashingOrdersForDhobi = async (req, res) => {
+// Get washing orders for logged-in  (vendor)
+export const getWashingOrdersForVendor = async (req, res) => {
   try {
     const orders = await Order.find({
       assignedDhobi: req.user.uid,
       status: { $in: ["Washing", "Washed"] },
-    }).populate("claimedBy", "name");
+    })
+      .populate("assignedDhobi", "name phone address") 
+      .populate("pickupClaimedBy", "name phone") 
+      .populate("deliveryClaimedBy", "name phone"); 
 
     res.json({ orders });
   } catch (error) {
+    console.error("Error fetching washing orders:", error);
     res.status(500).json({ message: "Failed to fetch washing orders" });
   }
 };
 
+// Get all delivery orders (for delivery boys)
 export const getDeliveryOrders = async (req, res) => {
   try {
-    const orders = await Order.find({
-      claimedBy: req.user.uid,
-      status: "Washed",
-    }).populate("assignedDhobi", "name address mobile");
+    const orders = await Order.find({ status: "Washed" })
+      .populate("assignedDhobi", "name address mobile")
+      .sort({ createdAt: -1 });
 
     res.json({ orders });
   } catch (error) {
+    console.error("Error fetching delivery orders:", error);
     res.status(500).json({ message: "Failed to fetch delivery orders" });
   }
 };
 
-// 🔽 Delivery Boy verifies OTP before starting delivery
+// User verifies OTP for delivery pickup
 export const verifyOtpForDeliveryPickup = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -342,10 +288,12 @@ export const verifyOtpForDeliveryPickup = async (req, res) => {
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     if (
-      !order.claimedBy ||
-      order.claimedBy.toString() !== req.user.uid.toString()
+      !order.deliveryClaimedBy ||
+      order.deliveryClaimedBy.toString() !== req.user.uid.toString()
     ) {
-      return res.status(403).json({ message: "Not authorized for this order" });
+      return res
+        .status(403)
+        .json({ message: "Not authorized for this delivery order" });
     }
 
     if (order.otp !== otp) {
@@ -357,11 +305,14 @@ export const verifyOtpForDeliveryPickup = async (req, res) => {
 
     res.json({ message: "Delivery pickup confirmed", order });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Delivery pickup OTP error:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to verify OTP for delivery pickup" });
   }
 };
 
-// 🔽 Final OTP verification by customer to mark order as Delivered
+//  User verifies OTP for final delivery
 export const verifyOtpForFinalDelivery = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -371,22 +322,116 @@ export const verifyOtpForFinalDelivery = async (req, res) => {
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     if (
-      !order.claimedBy ||
-      order.claimedBy.toString() !== req.user.uid.toString()
+      !order.deliveryClaimedBy ||
+      order.deliveryClaimedBy.toString() !== req.user.uid.toString()
     ) {
-      return res.status(403).json({ message: "Not authorized for this order" });
+      return res
+        .status(403)
+        .json({ message: "Not authorized for this delivery order" });
     }
 
     if (order.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // ✅ Mark order as Delivered
     order.status = "Delivered";
     await order.save();
 
     res.json({ message: "Order delivered successfully", order });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Final delivery OTP error:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to verify OTP for final delivery" });
+  }
+};
+
+// Get all delivery orders claimed by delivery boy
+export const getMyDeliveryOrders = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const orders = await Order.find({ deliveryClaimedBy: userId }).sort({
+      createdAt: -1,
+    });
+    res.json({ orders });
+  } catch (error) {
+    console.error("Get My Delivery Orders Error:", error);
+    res.status(500).json({ message: "Failed to fetch delivery orders" });
+  }
+};
+
+// Claim Pickup 
+export const claimPickupOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const user = await DeliveryBoy.findById(req.user.uid);
+
+    if (!user)
+      return res.status(404).json({ message: "Delivery boy not found" });
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (order.pickupClaimedBy) {
+      return res.status(400).json({ message: "Pickup already claimed" });
+    }
+
+    order.pickupClaimedBy = req.user.uid;
+    order.status = "Ready for Pickup";
+    await order.save();
+
+    user.claimedOrders.push(orderId);
+    await user.save();
+
+    res.json({ message: "Pickup order claimed successfully!", order });
+  } catch (error) {
+    console.error("Claim pickup error:", error);
+    res.status(500).json({ message: "Failed to claim pickup order" });
+  }
+};
+
+// Claim Delivery Order 
+export const claimDeliveryOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const user = await DeliveryBoy.findById(req.user.uid);
+
+    if (!user)
+      return res.status(404).json({ message: "Delivery boy not found" });
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (order.deliveryClaimedBy) {
+      return res.status(400).json({ message: "Delivery already claimed" });
+    }
+
+    order.deliveryClaimedBy = req.user.uid;
+    order.status = "Picking Up"; 
+    await order.save();
+
+    user.claimedOrders.push(orderId);
+    await user.save();
+
+    res.json({ message: "Delivery order claimed successfully!", order });
+  } catch (error) {
+    console.error("Claim delivery error:", error);
+    res.status(500).json({ message: "Failed to claim delivery order" });
+  }
+};
+
+// Get all pickup orders claimed by logged-in delivery boy
+export const getMyPickupOrders = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+
+    const orders = await Order.find({ pickupClaimedBy: userId }).sort({
+      createdAt: -1,
+    });
+
+    res.json({ orders });
+  } catch (error) {
+    console.error("Get My Pickup Orders Error:", error);
+    res.status(500).json({ message: "Failed to fetch pickup orders" });
   }
 };

@@ -1,4 +1,3 @@
-// routes/deliveryBoyRoutes.js
 import express from "express";
 import {
   registerDeliveryBoy,
@@ -10,8 +9,7 @@ import {
   rejectDeliveryBoy,
   getDeliveryBoyProfile,
   updateDeliveryBoyProfile,
-  claimOrder,
-  getMyDeals,
+  resetDeliveryBoyPassword,
 } from "../controllers/deliveryBoyController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 
@@ -25,11 +23,9 @@ router.get("/rejected", getRejectedUsers);
 router.post("/approve/:id", approveDeliveryBoy);
 router.post("/reject/:id", rejectDeliveryBoy);
 
-// ✅ Profile routes
 router.get("/profile", verifyToken, getDeliveryBoyProfile);
 router.put("/profile", verifyToken, updateDeliveryBoyProfile);
+router.put("/reset-password", verifyToken, resetDeliveryBoyPassword);
 
-router.post("/claim/:orderId", verifyToken, claimOrder);
-router.get("/my-deals", verifyToken, getMyDeals);
 
 export default router;

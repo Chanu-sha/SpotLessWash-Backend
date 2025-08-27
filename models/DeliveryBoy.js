@@ -10,6 +10,8 @@ const deliveryBoySchema = new mongoose.Schema({
   photo: String,
   address: String,
   claimedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
+  completedDeliveries: { type: Number, default: 0 },
+  completedPickups: { type: Number, default: 0 },
 });
 
 export default mongoose.model("DeliveryBoy", deliveryBoySchema);

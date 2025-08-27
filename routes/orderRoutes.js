@@ -7,12 +7,15 @@ import {
   getUnclaimedOrders,
   verifyOtpAndCompleteOrder,
   getAssignedOrders,
-  verifyOtpAndReceiveByDhobi,
-  getWashingOrdersForDhobi,
+  verifyOtpAndReceiveByVendor,
+  getWashingOrdersForVendor,
   getDeliveryOrders,
   verifyOtpForDeliveryPickup,
   verifyOtpForFinalDelivery,
-  getTodayOrderCount,
+  claimPickupOrder,
+  claimDeliveryOrder,
+  getMyPickupOrders,
+  getMyDeliveryOrders,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 
@@ -30,9 +33,9 @@ router.get("/assigned", verifyToken, getAssignedOrders);
 router.post(
   "/verify-otp-dhobi/:orderId",
   verifyToken,
-  verifyOtpAndReceiveByDhobi
+  verifyOtpAndReceiveByVendor
 );
-router.get("/assigned/washing", verifyToken, getWashingOrdersForDhobi);
+router.get("/assigned/washing", verifyToken, getWashingOrdersForVendor);
 
 router.get("/delivery-orders", verifyToken, getDeliveryOrders);
 router.post(
@@ -47,7 +50,11 @@ router.post(
 );
 
 router.patch("/:orderId/status", updateOrderStatus);
-// Get today's order count for a user
-router.get("/todayCount",  getTodayOrderCount);
+
+router.post("/claimpickup/:orderId", verifyToken, claimPickupOrder);
+router.post("/claimdlievery/:orderId", verifyToken, claimDeliveryOrder);
+// My deals routes
+router.get("/my-pickup-orders", verifyToken, getMyPickupOrders);
+router.get("/my-delivery-orders", verifyToken, getMyDeliveryOrders);
 
 export default router;

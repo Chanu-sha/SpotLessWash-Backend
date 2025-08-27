@@ -7,18 +7,6 @@ const userSchema = new mongoose.Schema({
   phone: String,
   address: String,
   photo: String,
-
-  subscription: {
-    status: { type: String, enum: ["active", "inactive"], default: "inactive" },
-    plan: { type: String, enum: ["monthly", "annual"], default: null },
-    start: { type: Date, default: null },
-    expiry: { type: Date, default: null },
-
-    dailyUsage: {
-      date: { type: Date, default: null },
-      services: [{ type: String }],
-    },
-  },
 });
 
 export default mongoose.model("User", userSchema);

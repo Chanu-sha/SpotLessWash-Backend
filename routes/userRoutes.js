@@ -1,4 +1,3 @@
-// routes/userRoutes.js
 import express from 'express';
 import { verifyFirebaseToken } from '../middlewares/authMiddleware.js';
 import {

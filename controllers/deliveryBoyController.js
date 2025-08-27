@@ -1,48 +1,77 @@
 import bcrypt from "bcryptjs";
 import DeliveryBoy from "../models/DeliveryBoy.js";
 import { createToken } from "../middlewares/jwtHelper.js";
-import Order from "../models/Order.js";
 
-// Register
+// Register Delivery Boy
 export const registerDeliveryBoy = async (req, res) => {
   const { name, email, phone, password } = req.body;
-  try {
-    const existing = await DeliveryBoy.findOne({ email });
-    if (existing)
-      return res.status(400).json({ message: "Email already used" });
 
-    const hashed = await bcrypt.hash(password, 10);
+  try {
+    // check email or phone duplication
+    const existing = await DeliveryBoy.findOne({ $or: [{ email }, { phone }] });
+    if (existing) {
+      return res.status(400).json({ message: "Email or phone already used" });
+    }
+
+    // hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const newBoy = await DeliveryBoy.create({
       name,
       email,
       phone,
-      password: hashed,
+      password: hashedPassword,
+      approved: false, 
+      rejected: false,
     });
-    res.status(201).json({ message: "Registration request sent" });
+
+    res
+      .status(201)
+      .json({ message: "Registration request sent, waiting for approval" });
   } catch (err) {
-    res.status(500).json({ message: "Error registering" });
+    console.error(" Register Error:", err);
+    res.status(500).json({ message: "Error registering user" });
   }
 };
 
-// Login
-
+// Login Delivery Boy
 export const loginDeliveryBoy = async (req, res) => {
   const { phone, password } = req.body;
+
   try {
     const boy = await DeliveryBoy.findOne({ phone });
-    if (!boy || !boy.approved || boy.rejected) {
+    if (!boy) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!boy.approved || boy.rejected) {
       return res.status(403).json({ message: "Not approved or rejected" });
     }
 
+    // Compare plain password with stored hash
     const match = await bcrypt.compare(password, boy.password);
-    if (!match) return res.status(400).json({ message: "Invalid credentials" });
+    if (!match) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
 
     const token = createToken({ uid: boy._id, role: "delivery" });
-    res.json({ message: "Login successful", token });
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: boy._id,
+        name: boy.name,
+        phone: boy.phone,
+        email: boy.email,
+      },
+    });
   } catch (err) {
+    console.error(" Login Error:", err);
     res.status(500).json({ message: "Login error" });
   }
 };
+
 // Get profile
 export const getDeliveryBoyProfile = async (req, res) => {
   try {
@@ -148,53 +177,46 @@ export const rejectDeliveryBoy = async (req, res) => {
   }
 };
 
-// Claim an order (Get this deal)
-export const claimOrder = async (req, res) => {
+// Reset Password
+export const resetDeliveryBoyPassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
   try {
-    const { orderId } = req.params;
-    const { dhobiId } = req.body; 
-
-    const user = await DeliveryBoy.findById(req.user.uid);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    if (order.claimedBy) {
-      return res.status(400).json({ message: "Order already claimed" });
+    // Get the delivery boy from database
+    const boy = await DeliveryBoy.findById(req.user.uid);
+    if (!boy) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    order.claimedBy = req.user.uid;
-    order.status = "Ready for Pickup";
-    order.assignedDhobi = dhobiId; // 🆕 Assign dhobi
-    await order.save();
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, boy.password);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
 
-    user.claimedOrders.push(orderId);
-    await user.save();
+    // Check if new password is different from current
+    const isSamePassword = await bcrypt.compare(newPassword, boy.password);
+    if (isSamePassword) {
+      return res.status(400).json({ message: "New password must be different from current password" });
+    }
 
-    res.json({ message: "Order claimed and dhobi assigned", order });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to claim order" });
-  }
-};
+    // Validate new password length
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters long" });
+    }
 
-// controllers/deliveryBoyController.js
-export const getMyDeals = async (req, res) => {
-  try {
-    const user = await DeliveryBoy.findById(req.user.uid)
-      .populate({
-        path: "claimedOrders",
-        populate: {
-          path: "assignedDhobi",
-          select: "name phone address", // Only fetch necessary fields
-        },
-      });
+    // Hash the new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // Update the password
+    await DeliveryBoy.findByIdAndUpdate(req.user.uid, {
+      password: hashedNewPassword
+    });
 
-    res.json({ orders: user.claimedOrders });
-  } catch (error) {
-    console.error("Error fetching delivery boy deals:", error);
-    res.status(500).json({ message: "Error fetching deals" });
+    res.json({ message: "Password updated successfully" });
+
+  } catch (err) {
+    console.error("❌ Password Reset Error:", err);
+    res.status(500).json({ message: "Error updating password" });
   }
 };

@@ -1,4 +1,3 @@
-// middleware/jwtHelper.js
 import jwt from "jsonwebtoken";
 
 export const createToken = (payload) =>
