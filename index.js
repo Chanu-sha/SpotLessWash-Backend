@@ -11,19 +11,7 @@ import vendorRoutes from "./routes/vendorRoutes.js";
 dotenv.config();
 
 const app = express();
-app.use(
-  cors({
-    origin: [
-      process.env.CLIENT_URL,
-      "capacitor://localhost",
-      "http://localhost",
-      "http://10.0.2.2:8080",
-    ],
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+app.use(cors());
 
 app.use(express.json());
 
