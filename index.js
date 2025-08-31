@@ -8,16 +8,20 @@ import deliveryBoyRoutes from "./routes/deliveryBoyRoutes.js";
 import adminRoutes from "./routes/admin.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
 
-
 dotenv.config();
 
 const app = express();
 app.use(
   cors({
-    origin:"*",
+    origin: [
+      process.env.CLIENT_URL,
+      "capacitor://localhost",
+      "http://localhost",
+      "http://10.0.2.2:8080",
+    ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true, 
+    credentials: true,
   })
 );
 
@@ -33,8 +37,6 @@ app.use("/api/deliveryboy", deliveryBoyRoutes);
 app.use("/api/vendor", vendorRoutes);
 app.use("/api/admin", adminRoutes);
 app.get("/api/health", (_, res) => res.json({ ok: true }));
-
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
