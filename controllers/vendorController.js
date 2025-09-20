@@ -1,33 +1,158 @@
 import bcrypt from "bcryptjs";
 import Vendor from "../models/Vendor.js";
 import { createToken } from "../middlewares/jwtHelper.js";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 
-// Register
-export const registerVendor = async (req, res) => {
-  const { name, email, phone, password, services } = req.body;
-  try {
-    const existing = await Vendor.findOne({ email });
-    if (existing)
-      return res.status(400).json({ message: "Email already used" });
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-    const hashed = await bcrypt.hash(password, 10);
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
 
-    await Vendor.create({
-      name,
-      email,
-      phone,
-      password: hashed,
-      services,
-    });
-
-    res.status(201).json({ message: "Registration request sent" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error registering" });
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
   }
 };
 
-// Login
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 2 * 1024 * 1024 // 2MB limit
+  }
+});
+
+// Middleware for handling vendor photo uploads
+export const uploadVendorPhotos = upload.fields([
+  { name: 'livePhoto', maxCount: 1 },
+  { name: 'aadhaarPhoto', maxCount: 1 }
+]);
+
+// Helper function to upload image to Cloudinary
+const uploadToCloudinary = (buffer, folder, filename) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream(
+      {
+        folder: `vendor-photos/${folder}`,
+        public_id: filename,
+        resource_type: 'image',
+        format: 'jpg',
+        transformation: [
+          { width: 800, height: 600, crop: 'limit' },
+          { quality: 'auto:good' }
+        ]
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    ).end(buffer);
+  });
+};
+
+// Helper function to delete image from Cloudinary
+const deleteFromCloudinary = async (publicId) => {
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch (error) {
+    console.error("Error deleting from Cloudinary:", error);
+  }
+};
+
+// Register Vendor with Cloudinary photo upload
+export const registerVendor = async (req, res) => {
+  const { name, email, phone, password, services } = req.body;
+  
+  try {
+    // Check email or phone duplication
+    const existing = await Vendor.findOne({ $or: [{ email }, { phone }] });
+    if (existing) {
+      return res.status(400).json({ message: "Email or phone already used" });
+    }
+
+    // Validate required photos
+    if (!req.files || !req.files.livePhoto || !req.files.aadhaarPhoto) {
+      return res.status(400).json({ 
+        message: "Both live photo and Aadhaar card photo are required" 
+      });
+    }
+
+    // Parse services if it's a string
+    let parsedServices = [];
+    if (services) {
+      try {
+        parsedServices = typeof services === 'string' ? JSON.parse(services) : services;
+      } catch (error) {
+        return res.status(400).json({ message: "Invalid services data" });
+      }
+    }
+
+    // Hash password
+    const hashed = await bcrypt.hash(password, 10);
+
+    // Upload photos to Cloudinary
+    const timestamp = Date.now();
+    const phoneLastFour = phone.slice(-4);
+    
+    try {
+      const [liveUpload, aadhaarUpload] = await Promise.all([
+        uploadToCloudinary(
+          req.files.livePhoto[0].buffer, 
+          'live', 
+          `live_${phoneLastFour}_${timestamp}`
+        ),
+        uploadToCloudinary(
+          req.files.aadhaarPhoto[0].buffer, 
+          'aadhaar', 
+          `aadhaar_${phoneLastFour}_${timestamp}`
+        )
+      ]);
+
+      const newVendor = await Vendor.create({
+        name,
+        email,
+        phone,
+        password: hashed,
+        services: parsedServices,
+        approved: false,
+        rejected: false,
+        livePhoto: liveUpload.secure_url,
+        aadhaarPhoto: aadhaarUpload.secure_url,
+        cloudinaryIds: {
+          live: liveUpload.public_id,
+          aadhaar: aadhaarUpload.public_id
+        }
+      });
+
+      res.status(201).json({ 
+        message: "Registration request sent with documents, waiting for approval" 
+      });
+
+    } catch (uploadError) {
+      console.error("Cloudinary Upload Error:", uploadError);
+      return res.status(500).json({ message: "Error uploading photos. Please try again." });
+    }
+
+  } catch (err) {
+    console.error("Register Error:", err);
+    
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: "File size too large. Maximum 2MB allowed." });
+    }
+    
+    res.status(500).json({ message: "Error registering vendor" });
+  }
+};
+
+// Login (unchanged)
 export const loginVendor = async (req, res) => {
   const { phone, password } = req.body;
   try {
@@ -39,7 +164,16 @@ export const loginVendor = async (req, res) => {
     if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
     const token = createToken({ uid: user._id, role: "vendor" });
-    res.json({ message: "Login successful", token });
+    res.json({ 
+      message: "Login successful", 
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+      }
+    });
   } catch {
     res.status(500).json({ message: "Login error" });
   }
@@ -62,7 +196,7 @@ export const getVendorProfile = async (req, res) => {
 // Update Profile
 export const updateVendorProfile = async (req, res) => {
   try {
-    const allowedFields = ["name", "email", "phone", "address", "photo"];
+    const allowedFields = ["name", "email", "phone", "address"];
     const updates = {};
 
     Object.keys(req.body).forEach((key) => {
@@ -113,6 +247,12 @@ export const resetVendorPassword = async (req, res) => {
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Current password is incorrect" });
+    }
+
+    // Check if new password is different from current
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({ message: "New password must be different from current password" });
     }
 
     // Hash new password
@@ -376,7 +516,7 @@ export const getVendorServices = async (req, res) => {
   }
 };
 
-// Admin Functions (existing code maintained)
+// Admin Functions
 export const getAllVendors = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`)
     return res.status(403).json({ message: "Unauthorized" });
@@ -389,7 +529,7 @@ export const getAllVendors = async (req, res) => {
   }
 };
 
-// Get Pending Vendors
+// Get Pending Vendors (with photo URLs)
 export const getPendingVendors = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`)
     return res.status(403).json({ message: "Unauthorized" });
@@ -398,7 +538,7 @@ export const getPendingVendors = async (req, res) => {
     const pending = await Vendor.find({ approved: false, rejected: false });
     res.json(pending);
   } catch {
-    res.status(500).json({ message: "Error fetching" });
+    res.status(500).json({ message: "Error fetching pending vendors" });
   }
 };
 
@@ -431,16 +571,27 @@ export const approveVendor = async (req, res) => {
   }
 };
 
-// Reject Vendor
+// Reject Vendor with Cloudinary cleanup
 export const rejectVendor = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`)
     return res.status(403).json({ message: "Unauthorized" });
 
   try {
+    const vendor = await Vendor.findById(req.params.id);
+    
+    // Delete photos from Cloudinary when rejecting
+    if (vendor && vendor.cloudinaryIds) {
+      await Promise.all([
+        deleteFromCloudinary(vendor.cloudinaryIds.live),
+        deleteFromCloudinary(vendor.cloudinaryIds.aadhaar)
+      ]);
+    }
+
     await Vendor.findByIdAndUpdate(req.params.id, {
       rejected: true,
       approved: false,
     });
+    
     res.json({ message: "Rejected successfully" });
   } catch {
     res.status(500).json({ message: "Error rejecting" });
