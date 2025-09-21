@@ -67,6 +67,20 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
+// Helper function to transform services for public display
+const transformServicesForDisplay = (services) => {
+  return services.map(service => ({
+    _id: service._id,
+    name: service.name,
+    description: service.description,
+    displayPrice: service.displayPrice, // Higher price to show
+    appPrice: service.appPrice, // Actual price after 15% margin
+    discountPercentage: service.discountPercentage,
+    originalPrice: service.displayPrice, // For strikethrough
+    finalPrice: service.appPrice // For actual payment
+  }));
+};
+
 // Register Vendor with Cloudinary photo upload
 export const registerVendor = async (req, res) => {
   const { name, email, phone, password, services } = req.body;
@@ -89,7 +103,13 @@ export const registerVendor = async (req, res) => {
     let parsedServices = [];
     if (services) {
       try {
-        parsedServices = typeof services === 'string' ? JSON.parse(services) : services;
+        const rawServices = typeof services === 'string' ? JSON.parse(services) : services;
+        // Transform price to basePrice
+        parsedServices = rawServices.map(service => ({
+          name: service.name,
+          description: service.description,
+          basePrice: Number(service.price) // Store vendor's price as basePrice
+        }));
       } catch (error) {
         return res.status(400).json({ message: "Invalid services data" });
       }
@@ -179,7 +199,7 @@ export const loginVendor = async (req, res) => {
   }
 };
 
-// Get Profile
+// Get Profile (show basePrice for vendor's own view)
 export const getVendorProfile = async (req, res) => {
   try {
     const user = await Vendor.findById(req.user.uid).select("-password");
@@ -351,7 +371,7 @@ export const deleteStoreImage = async (req, res) => {
   }
 };
 
-// Add Service
+// Add Service (store as basePrice)
 export const addVendorService = async (req, res) => {
   try {
     const { name, description, price } = req.body;
@@ -387,7 +407,7 @@ export const addVendorService = async (req, res) => {
     const newService = {
       name,
       description,
-      price: Number(price),
+      basePrice: Number(price), // Store as basePrice
     };
 
     user.services.push(newService);
@@ -403,7 +423,7 @@ export const addVendorService = async (req, res) => {
   }
 };
 
-// Update Service
+// Update Service (update basePrice)
 export const updateVendorService = async (req, res) => {
   try {
     const { serviceId } = req.params;
@@ -450,7 +470,7 @@ export const updateVendorService = async (req, res) => {
     // Update service
     user.services[serviceIndex].name = name;
     user.services[serviceIndex].description = description;
-    user.services[serviceIndex].price = Number(price);
+    user.services[serviceIndex].basePrice = Number(price); // Update basePrice
 
     await user.save();
 
@@ -496,7 +516,7 @@ export const deleteVendorService = async (req, res) => {
   }
 };
 
-// Get All Services (for public viewing)
+// Get All Services (for public viewing with transformed pricing)
 export const getVendorServices = async (req, res) => {
   try {
     const { vendorId } = req.params;
@@ -506,9 +526,11 @@ export const getVendorServices = async (req, res) => {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
+    const transformedServices = transformServicesForDisplay(user.services);
+
     res.json({
       vendorName: user.name,
-      services: user.services,
+      services: transformedServices,
     });
   } catch (err) {
     console.error(err);
@@ -598,11 +620,18 @@ export const rejectVendor = async (req, res) => {
   }
 };
 
-// Get Approved Vendors
+// Get Approved Vendors (with transformed pricing for public display)
 export const getApprovedVendors = async (req, res) => {
   try {
     const approved = await Vendor.find({ approved: true, rejected: false });
-    res.json(approved);
+    
+    // Transform services to include pricing display logic
+    const transformedVendors = approved.map(vendor => ({
+      ...vendor.toObject(),
+      services: transformServicesForDisplay(vendor.services)
+    }));
+    
+    res.json(transformedVendors);
   } catch {
     res.status(500).json({ message: "Error fetching approved vendors" });
   }
