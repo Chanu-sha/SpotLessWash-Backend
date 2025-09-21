@@ -67,20 +67,6 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
-// Helper function to transform services for public display
-const transformServicesForDisplay = (services) => {
-  return services.map(service => ({
-    _id: service._id,
-    name: service.name,
-    description: service.description,
-    displayPrice: service.displayPrice, // Higher price to show
-    appPrice: service.appPrice, // Actual price after 15% margin
-    discountPercentage: service.discountPercentage,
-    originalPrice: service.displayPrice, // For strikethrough
-    finalPrice: service.appPrice // For actual payment
-  }));
-};
-
 // Register Vendor with Cloudinary photo upload
 export const registerVendor = async (req, res) => {
   const { name, email, phone, password, services } = req.body;
@@ -104,7 +90,6 @@ export const registerVendor = async (req, res) => {
     if (services) {
       try {
         const rawServices = typeof services === 'string' ? JSON.parse(services) : services;
-        // Transform price to basePrice
         parsedServices = rawServices.map(service => ({
           name: service.name,
           description: service.description,
@@ -516,7 +501,7 @@ export const deleteVendorService = async (req, res) => {
   }
 };
 
-// Get All Services (for public viewing with transformed pricing)
+// Get All Services (for public viewing with pricing calculations)
 export const getVendorServices = async (req, res) => {
   try {
     const { vendorId } = req.params;
@@ -526,11 +511,9 @@ export const getVendorServices = async (req, res) => {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
-    const transformedServices = transformServicesForDisplay(user.services);
-
     res.json({
       vendorName: user.name,
-      services: transformedServices,
+      services: user.services, // Virtual fields will be included automatically
     });
   } catch (err) {
     console.error(err);
@@ -620,18 +603,11 @@ export const rejectVendor = async (req, res) => {
   }
 };
 
-// Get Approved Vendors (with transformed pricing for public display)
+// Get Approved Vendors (for public display with pricing calculations)
 export const getApprovedVendors = async (req, res) => {
   try {
     const approved = await Vendor.find({ approved: true, rejected: false });
-    
-    // Transform services to include pricing display logic
-    const transformedVendors = approved.map(vendor => ({
-      ...vendor.toObject(),
-      services: transformServicesForDisplay(vendor.services)
-    }));
-    
-    res.json(transformedVendors);
+    res.json(approved); // Virtual fields will be included automatically
   } catch {
     res.status(500).json({ message: "Error fetching approved vendors" });
   }

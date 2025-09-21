@@ -3,23 +3,23 @@ import mongoose from "mongoose";
 const serviceSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
-  basePrice: { type: Number, required: true, min: 0 }, // Vendor's actual price
+  basePrice: { type: Number, required: true, min: 0 }, // Vendor's entered price
 }, { timestamps: true });
 
 // Add virtual fields for pricing calculations
+serviceSchema.virtual('displayPrice').get(function() {
+  // Show 30% higher price for strikethrough effect
+  return Math.ceil(this.basePrice * 1.30);
+});
+
 serviceSchema.virtual('appPrice').get(function() {
-  // Add 15% margin for the app
+  // User actually pays: vendor price + 15% (app margin)
   return Math.ceil(this.basePrice * 1.15);
 });
 
-serviceSchema.virtual('displayPrice').get(function() {
-  // Show higher price (25% more than base) to create discount effect
-  return Math.ceil(this.basePrice * 1.25);
-});
-
 serviceSchema.virtual('discountPercentage').get(function() {
+  const displayPrice = Math.ceil(this.basePrice * 1.30);
   const appPrice = Math.ceil(this.basePrice * 1.15);
-  const displayPrice = Math.ceil(this.basePrice * 1.25);
   return Math.round(((displayPrice - appPrice) / displayPrice) * 100);
 });
 
