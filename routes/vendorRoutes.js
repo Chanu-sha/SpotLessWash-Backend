@@ -19,6 +19,16 @@ import {
   updateStoreImage,
   deleteStoreImage,
   uploadVendorPhotos,
+  // NEW WALLET FUNCTIONS
+  completeWashingOrder,
+  getVendorWalletDetails,
+  getVendorStats,
+  getTodaysCompletedOrders,
+  getPastCompletedOrders,
+  createVendorWithdrawalRequest,
+  getVendorWithdrawalHistory,
+  getAllVendorWithdrawalRequests,
+  updateVendorWithdrawalStatus,
 } from "../controllers/vendorController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 
@@ -27,7 +37,7 @@ const router = express.Router();
 // Registration route with photo upload middleware
 router.post("/register", uploadVendorPhotos, registerVendor);
 
-// Login route (no changes needed)
+// Login route
 router.post("/login", loginVendor);
 
 // Admin routes (require admin authorization)
@@ -53,5 +63,18 @@ router.get("/services/:vendorId", getVendorServices);
 router.post("/store-images", verifyToken, addStoreImage);
 router.put("/store-images/:index", verifyToken, updateStoreImage);
 router.delete("/store-images/:index", verifyToken, deleteStoreImage);
+
+// NEW WALLET ROUTES
+router.post("/complete-order/:orderId", verifyToken, completeWashingOrder);
+router.get("/wallet", verifyToken, getVendorWalletDetails);
+router.get("/stats", verifyToken, getVendorStats);
+router.get("/todays-orders", verifyToken, getTodaysCompletedOrders);
+router.get("/past-orders", verifyToken, getPastCompletedOrders);
+router.post("/withdrawal-request", verifyToken, createVendorWithdrawalRequest);
+router.get("/withdrawal-history", verifyToken, getVendorWithdrawalHistory);
+
+// Admin vendor withdrawal management routes
+router.get("/admin/withdrawals", getAllVendorWithdrawalRequests);
+router.put("/admin/withdrawals/:withdrawalId", updateVendorWithdrawalStatus);
 
 export default router;

@@ -36,7 +36,25 @@ const orderSchema = new mongoose.Schema({
     ref: "DeliveryBoy",
     default: null,
   },
+  
+  // ✅ ADD THESE FIELDS FOR WALLET FUNCTIONALITY
+  walletUpdated: {
+    type: Boolean,
+    default: false
+  },
+  completedAt: {
+    type: Date
+  },
+  
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+}, { 
+  timestamps: true 
 });
+
+// Add index for better performance
+orderSchema.index({ vendorId: 1, status: 1 });
+orderSchema.index({ vendorId: 1, completedAt: 1 });
+orderSchema.index({ vendorId: 1, walletUpdated: 1 });
 
 export default mongoose.model("Order", orderSchema);

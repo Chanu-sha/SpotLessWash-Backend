@@ -16,13 +16,19 @@ import {
   claimDeliveryOrder,
   getMyPickupOrders,
   getMyDeliveryOrders,
+  createRazorpayOrder,
+  verifyRazorpayPayment,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
+import { verifyFirebaseToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-import { verifyFirebaseToken } from "../middlewares/authMiddleware.js";
+// Payment routes
+router.post("/payment/create-order", verifyFirebaseToken, createRazorpayOrder);
+router.post("/payment/verify", verifyFirebaseToken, verifyRazorpayPayment);
 
+// Order routes
 router.post("/place", verifyFirebaseToken, placeOrder);
 router.get("/my-orders", verifyFirebaseToken, getUserOrders);
 router.get("/track/:orderId", verifyFirebaseToken, trackOrder);
@@ -53,6 +59,7 @@ router.patch("/:orderId/status", updateOrderStatus);
 
 router.post("/claimpickup/:orderId", verifyToken, claimPickupOrder);
 router.post("/claimdlievery/:orderId", verifyToken, claimDeliveryOrder);
+
 // My deals routes
 router.get("/my-pickup-orders", verifyToken, getMyPickupOrders);
 router.get("/my-delivery-orders", verifyToken, getMyDeliveryOrders);

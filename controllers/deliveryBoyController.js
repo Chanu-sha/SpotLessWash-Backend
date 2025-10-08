@@ -3,12 +3,14 @@ import DeliveryBoy from "../models/DeliveryBoy.js";
 import { createToken } from "../middlewares/jwtHelper.js";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
+import Wallet from '../models/DelieveryWallet.js';
+import WithdrawalRequest from "../models/DelieveryWithdrawalRequest.js";
 
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 // Configure multer for memory storage (temporary)
@@ -16,47 +18,49 @@ const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   // Check file type
-  if (file.mimetype.startsWith('image/')) {
+  if (file.mimetype.startsWith("image/")) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed!'), false);
+    cb(new Error("Only image files are allowed!"), false);
   }
 };
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 2 * 1024 * 1024 // 2MB limit
-  }
+    fileSize: 2 * 1024 * 1024, // 2MB limit
+  },
 });
 
 // Middleware for handling multiple file uploads
 export const uploadPhotos = upload.fields([
-  { name: 'livePhoto', maxCount: 1 },
-  { name: 'aadhaarPhoto', maxCount: 1 },
-  { name: 'licensePhoto', maxCount: 1 }
+  { name: "livePhoto", maxCount: 1 },
+  { name: "aadhaarPhoto", maxCount: 1 },
+  { name: "licensePhoto", maxCount: 1 },
 ]);
 
 // Helper function to upload image to Cloudinary
 const uploadToCloudinary = (buffer, folder, filename) => {
   return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: `delivery-photos/${folder}`,
-        public_id: filename,
-        resource_type: 'image',
-        format: 'jpg',
-        transformation: [
-          { width: 800, height: 600, crop: 'limit' },
-          { quality: 'auto:good' }
-        ]
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(buffer);
+    cloudinary.uploader
+      .upload_stream(
+        {
+          folder: `delivery-photos/${folder}`,
+          public_id: filename,
+          resource_type: "image",
+          format: "jpg",
+          transformation: [
+            { width: 800, height: 600, crop: "limit" },
+            { quality: "auto:good" },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      )
+      .end(buffer);
   });
 };
 
@@ -72,9 +76,15 @@ export const registerDeliveryBoy = async (req, res) => {
     }
 
     // Validate required photos
-    if (!req.files || !req.files.livePhoto || !req.files.aadhaarPhoto || !req.files.licensePhoto) {
-      return res.status(400).json({ 
-        message: "All photos are required: live photo, Aadhaar card, and driving license" 
+    if (
+      !req.files ||
+      !req.files.livePhoto ||
+      !req.files.aadhaarPhoto ||
+      !req.files.licensePhoto
+    ) {
+      return res.status(400).json({
+        message:
+          "All photos are required: live photo, Aadhaar card, and driving license",
       });
     }
 
@@ -84,24 +94,24 @@ export const registerDeliveryBoy = async (req, res) => {
     // Upload photos to Cloudinary
     const timestamp = Date.now();
     const phoneLastFour = phone.slice(-4);
-    
+
     try {
       const [liveUpload, aadhaarUpload, licenseUpload] = await Promise.all([
         uploadToCloudinary(
-          req.files.livePhoto[0].buffer, 
-          'live', 
+          req.files.livePhoto[0].buffer,
+          "live",
           `live_${phoneLastFour}_${timestamp}`
         ),
         uploadToCloudinary(
-          req.files.aadhaarPhoto[0].buffer, 
-          'aadhaar', 
+          req.files.aadhaarPhoto[0].buffer,
+          "aadhaar",
           `aadhaar_${phoneLastFour}_${timestamp}`
         ),
         uploadToCloudinary(
-          req.files.licensePhoto[0].buffer, 
-          'license', 
+          req.files.licensePhoto[0].buffer,
+          "license",
           `license_${phoneLastFour}_${timestamp}`
-        )
+        ),
       ]);
 
       const newBoy = await DeliveryBoy.create({
@@ -109,7 +119,7 @@ export const registerDeliveryBoy = async (req, res) => {
         email,
         phone,
         password: hashedPassword,
-        approved: false, 
+        approved: false,
         rejected: false,
         livePhoto: liveUpload.secure_url,
         aadhaarPhoto: aadhaarUpload.secure_url,
@@ -117,26 +127,29 @@ export const registerDeliveryBoy = async (req, res) => {
         cloudinaryIds: {
           live: liveUpload.public_id,
           aadhaar: aadhaarUpload.public_id,
-          license: licenseUpload.public_id
-        }
+          license: licenseUpload.public_id,
+        },
       });
 
-      res.status(201).json({ 
-        message: "Registration request sent with documents, waiting for approval" 
+      res.status(201).json({
+        message:
+          "Registration request sent with documents, waiting for approval",
       });
-
     } catch (uploadError) {
       console.error("Cloudinary Upload Error:", uploadError);
-      return res.status(500).json({ message: "Error uploading photos. Please try again." });
+      return res
+        .status(500)
+        .json({ message: "Error uploading photos. Please try again." });
     }
-
   } catch (err) {
     console.error("Register Error:", err);
-    
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ message: "File size too large. Maximum 2MB allowed." });
+
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ message: "File size too large. Maximum 2MB allowed." });
     }
-    
+
     res.status(500).json({ message: "Error registering user" });
   }
 };
@@ -230,7 +243,7 @@ export const getPendingRequests = async (req, res) => {
       approved: false,
       rejected: false,
     });
-    
+
     res.json(pending);
   } catch {
     res.status(500).json({ message: "Error fetching" });
@@ -276,6 +289,34 @@ const deleteFromCloudinary = async (publicId) => {
     console.error("Error deleting from Cloudinary:", error);
   }
 };
+// Get wallet details
+export const getWalletDetails = async (req, res) => {
+  try {
+    let wallet = await Wallet.findOne({ deliveryBoyId: req.user.uid });
+    if (!wallet) {
+      wallet = await Wallet.create({ deliveryBoyId: req.user.uid });
+    }
+
+    // Check if it's a new day and reset earnings
+    const today = new Date();
+    const lastEarningDate = new Date(wallet.lastEarningDate);
+
+    if (today.toDateString() !== lastEarningDate.toDateString()) {
+      await wallet.resetDailyEarnings();
+    }
+
+    res.json({
+      totalEarnings: wallet.totalEarnings,
+      todaysEarnings: wallet.todaysEarnings,
+      withdrawableBalance: wallet.withdrawableBalance,
+      totalWithdrawn: wallet.totalWithdrawn,
+      lastEarningDate: wallet.lastEarningDate,
+    });
+  } catch (error) {
+    console.error("Error fetching wallet details:", error);
+    res.status(500).json({ message: "Failed to fetch wallet details" });
+  }
+};
 
 // Reject with Cloudinary cleanup
 export const rejectDeliveryBoy = async (req, res) => {
@@ -285,13 +326,13 @@ export const rejectDeliveryBoy = async (req, res) => {
 
   try {
     const deliveryBoy = await DeliveryBoy.findById(req.params.id);
-    
+
     // Delete photos from Cloudinary when rejecting
     if (deliveryBoy && deliveryBoy.cloudinaryIds) {
       await Promise.all([
         deleteFromCloudinary(deliveryBoy.cloudinaryIds.live),
         deleteFromCloudinary(deliveryBoy.cloudinaryIds.aadhaar),
-        deleteFromCloudinary(deliveryBoy.cloudinaryIds.license)
+        deleteFromCloudinary(deliveryBoy.cloudinaryIds.license),
       ]);
     }
 
@@ -299,7 +340,7 @@ export const rejectDeliveryBoy = async (req, res) => {
       rejected: true,
       approved: false,
     });
-    
+
     res.json({ message: "Rejected successfully" });
   } catch {
     res.status(500).json({ message: "Error rejecting" });
@@ -318,7 +359,10 @@ export const resetDeliveryBoyPassword = async (req, res) => {
     }
 
     // Verify current password
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, boy.password);
+    const isCurrentPasswordValid = await bcrypt.compare(
+      currentPassword,
+      boy.password
+    );
     if (!isCurrentPasswordValid) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
@@ -326,12 +370,16 @@ export const resetDeliveryBoyPassword = async (req, res) => {
     // Check if new password is different from current
     const isSamePassword = await bcrypt.compare(newPassword, boy.password);
     if (isSamePassword) {
-      return res.status(400).json({ message: "New password must be different from current password" });
+      return res.status(400).json({
+        message: "New password must be different from current password",
+      });
     }
 
     // Validate new password length
     if (newPassword.length < 6) {
-      return res.status(400).json({ message: "New password must be at least 6 characters long" });
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 6 characters long" });
     }
 
     // Hash the new password
@@ -339,13 +387,289 @@ export const resetDeliveryBoyPassword = async (req, res) => {
 
     // Update the password
     await DeliveryBoy.findByIdAndUpdate(req.user.uid, {
-      password: hashedNewPassword
+      password: hashedNewPassword,
     });
 
     res.json({ message: "Password updated successfully" });
-
   } catch (err) {
     console.error(" Password Reset Error:", err);
     res.status(500).json({ message: "Error updating password" });
+  }
+};
+
+export const incrementPickupCount = async (req, res) => {
+  try {
+    const deliveryBoyId = req.body.deliveryBoyId || req.user.uid;
+
+    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(
+      deliveryBoyId,
+      { $inc: { completedPickups: 1 } },
+      { new: true }
+    );
+
+    if (!deliveryBoy) {
+      return res.status(404).json({ message: "Delivery boy not found" });
+    }
+
+    // Add earnings to wallet
+    let wallet = await Wallet.findOne({ deliveryBoyId });
+    if (!wallet) {
+      wallet = await Wallet.create({ deliveryBoyId });
+    }
+
+    await wallet.addEarnings(25); // 25 rupees per pickup
+
+    res.json({
+      message: "Pickup count updated successfully",
+      completedPickups: deliveryBoy.completedPickups,
+      deliveryBoyName: deliveryBoy.name,
+      earningsAdded: 25,
+    });
+  } catch (error) {
+    console.error("Error incrementing pickup count:", error);
+    res.status(500).json({ message: "Failed to update pickup count" });
+  }
+};
+
+// Increment delivery count
+export const incrementDeliveryCount = async (req, res) => {
+  try {
+    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(
+      req.user.uid,
+      { $inc: { completedDeliveries: 1 } },
+      { new: true }
+    );
+
+    if (!deliveryBoy) {
+      return res.status(404).json({ message: "Delivery boy not found" });
+    }
+
+    // Add earnings to wallet
+    let wallet = await Wallet.findOne({ deliveryBoyId: req.user.uid });
+    if (!wallet) {
+      wallet = await Wallet.create({ deliveryBoyId: req.user.uid });
+    }
+
+    await wallet.addEarnings(25); // 25 rupees per delivery
+
+    res.json({
+      message: "Delivery count updated successfully",
+      completedDeliveries: deliveryBoy.completedDeliveries,
+      earningsAdded: 25,
+    });
+  } catch (error) {
+    console.error("Error incrementing delivery count:", error);
+    res.status(500).json({ message: "Failed to update delivery count" });
+  }
+};
+
+// Get delivery boy stats
+export const getDeliveryBoyStats = async (req, res) => {
+  try {
+    const deliveryBoy = await DeliveryBoy.findById(req.user.uid).select(
+      "completedPickups completedDeliveries name"
+    );
+
+    if (!deliveryBoy) {
+      return res.status(404).json({ message: "Delivery boy not found" });
+    }
+
+    // Get wallet info
+    let wallet = await Wallet.findOne({ deliveryBoyId: req.user.uid });
+    if (!wallet) {
+      wallet = await Wallet.create({ deliveryBoyId: req.user.uid });
+    }
+
+    // Check if it's a new day and reset earnings
+    const today = new Date();
+    const lastEarningDate = new Date(wallet.lastEarningDate);
+
+    if (today.toDateString() !== lastEarningDate.toDateString()) {
+      await wallet.resetDailyEarnings();
+    }
+
+    res.json({
+      name: deliveryBoy.name,
+      completedPickups: deliveryBoy.completedPickups,
+      completedDeliveries: deliveryBoy.completedDeliveries,
+      totalCompletedOrders:
+        deliveryBoy.completedPickups + deliveryBoy.completedDeliveries,
+      wallet: {
+        totalEarnings: wallet.totalEarnings,
+        todaysEarnings: wallet.todaysEarnings,
+        withdrawableBalance: wallet.withdrawableBalance,
+        totalWithdrawn: wallet.totalWithdrawn,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching delivery boy stats:", error);
+    res.status(500).json({ message: "Failed to fetch stats" });
+  }
+};
+
+// Create withdrawal request
+export const createWithdrawalRequest = async (req, res) => {
+  try {
+    const { amount, upiId, fullName, phoneNumber, withdrawFrom } = req.body;
+
+    // Validate input
+    if (!amount || !upiId || !fullName || !phoneNumber || !withdrawFrom) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than 0" });
+    }
+
+    if (!["today", "withdrawable"].includes(withdrawFrom)) {
+      return res.status(400).json({ message: "Invalid withdrawal source" });
+    }
+
+    // Get wallet
+    let wallet = await Wallet.findOne({ deliveryBoyId: req.user.uid });
+    if (!wallet) {
+      wallet = await Wallet.create({ deliveryBoyId: req.user.uid });
+    }
+
+    // Check if it's a new day and reset earnings
+    const today = new Date();
+    const lastEarningDate = new Date(wallet.lastEarningDate);
+
+    if (today.toDateString() !== lastEarningDate.toDateString()) {
+      await wallet.resetDailyEarnings();
+    }
+
+    // Check available balance
+    const availableBalance =
+      withdrawFrom === "today"
+        ? wallet.todaysEarnings
+        : wallet.withdrawableBalance;
+
+    if (amount > availableBalance) {
+      return res.status(400).json({
+        message: `Insufficient balance. Available: ₹${availableBalance}`,
+      });
+    }
+
+    // Create withdrawal request
+    const withdrawalRequest = await WithdrawalRequest.create({
+      deliveryBoyId: req.user.uid,
+      amount,
+      upiId,
+      fullName,
+      phoneNumber,
+    });
+
+    // Deduct amount from wallet
+    if (withdrawFrom === "today") {
+      wallet.todaysEarnings -= amount;
+    } else {
+      wallet.withdrawableBalance -= amount;
+    }
+
+    await wallet.save();
+
+    res.json({
+      message: "Withdrawal request submitted successfully",
+      withdrawalId: withdrawalRequest._id,
+      remainingBalance:
+        withdrawFrom === "today"
+          ? wallet.todaysEarnings
+          : wallet.withdrawableBalance,
+    });
+  } catch (error) {
+    console.error("Error creating withdrawal request:", error);
+    res.status(500).json({ message: "Failed to create withdrawal request" });
+  }
+};
+
+// Get withdrawal history
+export const getWithdrawalHistory = async (req, res) => {
+  try {
+    const withdrawals = await WithdrawalRequest.find({
+      deliveryBoyId: req.user.uid,
+    }).sort({ createdAt: -1 });
+
+    res.json(withdrawals);
+  } catch (error) {
+    console.error("Error fetching withdrawal history:", error);
+    res.status(500).json({ message: "Failed to fetch withdrawal history" });
+  }
+};
+
+// Admin: Get all withdrawal requests
+export const getAllWithdrawalRequests = async (req, res) => {
+  if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const withdrawals = await WithdrawalRequest.find()
+      .populate("deliveryBoyId", "name phone email")
+      .sort({ createdAt: -1 });
+
+    res.json(withdrawals);
+  } catch (error) {
+    console.error("Error fetching withdrawal requests:", error);
+    res.status(500).json({ message: "Failed to fetch withdrawal requests" });
+  }
+};
+
+// Admin: Update withdrawal status
+export const updateWithdrawalStatus = async (req, res) => {
+  if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const { withdrawalId } = req.params;
+    const { status, adminNote, processedBy } = req.body;
+
+    if (!["approved", "rejected", "paid"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const withdrawal = await WithdrawalRequest.findById(withdrawalId);
+    if (!withdrawal) {
+      return res.status(404).json({ message: "Withdrawal request not found" });
+    }
+
+    // If rejecting, return money to wallet
+    if (status === "rejected" && withdrawal.status === "pending") {
+      const wallet = await Wallet.findOne({
+        deliveryBoyId: withdrawal.deliveryBoyId,
+      });
+      if (wallet) {
+        wallet.withdrawableBalance += withdrawal.amount;
+        await wallet.save();
+      }
+    }
+
+    // If paying, update wallet
+    if (status === "paid" && withdrawal.status === "approved") {
+      const wallet = await Wallet.findOne({
+        deliveryBoyId: withdrawal.deliveryBoyId,
+      });
+      if (wallet) {
+        wallet.totalWithdrawn += withdrawal.amount;
+        await wallet.save();
+      }
+    }
+
+    // Update withdrawal request
+    withdrawal.status = status;
+    withdrawal.adminNote = adminNote || "";
+    withdrawal.processedBy = processedBy || "Admin";
+    withdrawal.processedAt = new Date();
+
+    await withdrawal.save();
+
+    res.json({
+      message: `Withdrawal request ${status} successfully`,
+      withdrawal,
+    });
+  } catch (error) {
+    console.error("Error updating withdrawal status:", error);
+    res.status(500).json({ message: "Failed to update withdrawal status" });
   }
 };

@@ -1,0 +1,48 @@
+import mongoose from "mongoose";
+
+const vendorWithdrawalRequestSchema = new mongoose.Schema({
+  vendorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Vendor',
+    required: true
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 1
+  },
+  upiId: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  fullName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  phoneNumber: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected', 'paid'],
+    default: 'pending'
+  },
+  adminNote: {
+    type: String,
+    default: ''
+  },
+  processedAt: {
+    type: Date
+  },
+  processedBy: {
+    type: String
+  }
+}, {
+  timestamps: true
+});
+
+export default mongoose.model("VendorWithdrawalRequest", vendorWithdrawalRequestSchema);

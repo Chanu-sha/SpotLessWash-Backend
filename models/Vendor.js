@@ -85,11 +85,18 @@ vendorSchema.pre('findOneAndUpdate', function(next) {
 
 // Virtuals
 vendorSchema.virtual('serviceCount').get(function() {
-  return this.services.length;
+  return this.services?.length ?? 0;
 });
 
 vendorSchema.virtual('storeImageCount').get(function() {
-  return this.storeImages.length;
+  return this.storeImages?.length ?? 0;
+});
+
+// ✅ NEW: Virtual relation to Orders
+vendorSchema.virtual("assignedOrders", {
+  ref: "Order",               // reference model
+  localField: "_id",          // Vendor _id
+  foreignField: "vendorId"    // field in Order
 });
 
 // Ensure virtual fields are included in JSON output

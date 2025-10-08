@@ -1,13 +1,126 @@
+import dotenv from 'dotenv';
 import Order from "../models/Order.js";
 import Vendor from "../models/Vendor.js";
 import DeliveryBoy from "../models/DeliveryBoy.js";
+import Razorpay from "razorpay";
+import crypto from "crypto";
 
-//  Generate 4-digit OTP
+dotenv.config();
+
+// Initialize Razorpay (YouTube style)
+const razorpayInstance = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// Generate 4-digit OTP
 function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// Place Order
+// Create Razorpay Order (YouTube style implementation)
+export const createRazorpayOrder = async (req, res) => {
+  try {
+    const { amount, currency, receipt } = req.body;
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    const amountInPaise = Math.round(amount * 100);
+
+    const options = {
+      amount: amountInPaise,
+      currency: currency || 'INR',
+      receipt: receipt || `receipt_${Date.now()}`
+    };
+
+    razorpayInstance.orders.create(options, (err, order) => {
+      if (!err) {
+        console.log("Razorpay order created:", order.id);
+        
+        res.status(200).json({
+          success: true,
+          msg: 'Order Created',
+          order_id: order.id,
+          amount: amountInPaise,
+          currency: order.currency,
+          key_id: process.env.RAZORPAY_KEY_ID,
+          product_name: "Laundry Services",
+          description: req.body.description || "Laundry service payment"
+        });
+      } else {
+        console.error("Razorpay order creation error:", err);
+        res.status(400).json({
+          success: false,
+          msg: 'Something went wrong!',
+          error: err.message
+        });
+      }
+    });
+
+  } catch (error) {
+    console.error("Create Razorpay order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payment order",
+      error: error.message,
+    });
+  }
+};
+
+// Verify Razorpay Payment (Enhanced with YouTube style)
+export const verifyRazorpayPayment = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    // Validate required fields
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing payment verification parameters",
+      });
+    }
+
+    // Generate signature
+    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSign = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(sign.toString())
+      .digest("hex");
+
+    // Verify signature
+    if (razorpay_signature === expectedSign) {
+      console.log("Payment verified successfully:", razorpay_payment_id);
+      
+      res.json({
+        success: true,
+        message: "Payment verified successfully",
+        payment_id: razorpay_payment_id,
+      });
+    } else {
+      console.error("Invalid signature for payment:", razorpay_payment_id);
+      
+      res.status(400).json({
+        success: false,
+        message: "Invalid payment signature",
+      });
+    }
+  } catch (error) {
+    console.error("Verify payment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Payment verification failed",
+      error: error.message,
+    });
+  }
+};
+
+// Place Order (Same as before, no changes needed)
 export const placeOrder = async (req, res) => {
   try {
     const {
@@ -19,6 +132,9 @@ export const placeOrder = async (req, res) => {
       vendorAddress,
       services,
       assignedDhobi,
+      paymentMethod,
+      paymentId,
+      paymentStatus,
     } = req.body;
 
     // Validation
@@ -31,10 +147,24 @@ export const placeOrder = async (req, res) => {
       return res.status(400).json({ message: "Please enter valid address" });
     }
 
+    if (!paymentMethod || !["online", "cod"].includes(paymentMethod)) {
+      return res.status(400).json({ message: "Invalid payment method" });
+    }
+
+    // Validate online payment
+    if (paymentMethod === 'online' && (!paymentId || paymentStatus !== 'completed')) {
+      return res.status(400).json({ 
+        message: "Invalid payment details for online payment" 
+      });
+    }
+
     let totalPrice = services.reduce(
       (sum, s) => sum + (s.price || 0) * (s.quantity || 1),
       0
     );
+
+    // Add delivery charges
+    totalPrice += 50;
 
     const otp = generateOTP();
 
@@ -51,9 +181,14 @@ export const placeOrder = async (req, res) => {
       otp,
       status: "Scheduled",
       assignedDhobi,
+      paymentMethod,
+      paymentId: paymentId || null,
+      paymentStatus: paymentStatus || "pending",
     });
 
     await order.save();
+
+    console.log(`Order placed successfully: ${order._id}, Payment: ${paymentMethod}`);
 
     res.status(201).json({
       message: "Order placed successfully",
@@ -61,23 +196,24 @@ export const placeOrder = async (req, res) => {
     });
   } catch (error) {
     console.error("Order Error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      message: "Server error",
+      error: error.message 
+    });
   }
 };
 
-//  Get All Orders for Logged-in User
+// All other functions remain exactly the same
 export const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.user.uid }).sort({
       date: -1,
     });
 
-    // Current orders = All except Delivered & Cancelled
     const current = orders.filter(
       (order) => !["Delivered", "Cancelled"].includes(order.status)
     );
 
-    // Past orders = only Delivered & Cancelled
     const past = orders.filter((order) =>
       ["Delivered", "Cancelled"].includes(order.status)
     );
@@ -88,7 +224,6 @@ export const getUserOrders = async (req, res) => {
   }
 };
 
-//  Get Track Order
 export const trackOrder = async (req, res) => {
   try {
     const order = await Order.findOne({
@@ -104,7 +239,6 @@ export const trackOrder = async (req, res) => {
   }
 };
 
-// Update Order Status (for delivery boys)
 export const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -143,7 +277,6 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
-//  Verify OTP and Complete Order (for pickup )
 export const verifyOtpAndCompleteOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -152,7 +285,6 @@ export const verifyOtpAndCompleteOrder = async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    // Check pickupClaimedBy authorization
     if (
       !order.pickupClaimedBy ||
       order.pickupClaimedBy.toString() !== req.user.uid.toString()
@@ -164,7 +296,6 @@ export const verifyOtpAndCompleteOrder = async (req, res) => {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    //  Update status to Picked Up
     order.status = "Picked Up";
     await order.save();
 
@@ -174,7 +305,6 @@ export const verifyOtpAndCompleteOrder = async (req, res) => {
   }
 };
 
-// Verify OTP and Receive Order by Vendor (for washing )
 export const verifyOtpAndReceiveByVendor = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -203,7 +333,6 @@ export const verifyOtpAndReceiveByVendor = async (req, res) => {
   }
 };
 
-//  Get Unclaimed Orders (for delivery boys)
 export const getUnclaimedOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -218,7 +347,6 @@ export const getUnclaimedOrders = async (req, res) => {
   }
 };
 
-// getAssignedOrders (orders assigned to logged-in vendor)
 export const getAssignedOrders = async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.user.uid);
@@ -230,32 +358,31 @@ export const getAssignedOrders = async (req, res) => {
       .populate("pickupClaimedBy", "name phone")
       .populate("deliveryClaimedBy", "name phone")
       .populate("assignedDhobi", "name phone address")
-      .sort({ createdAt: -1 }); 
+      .sort({ createdAt: -1 });
 
-    res.json({ 
-      message: "Assigned orders fetched successfully", 
+    res.json({
+      message: "Assigned orders fetched successfully",
       orders,
-      count: orders.length 
+      count: orders.length,
     });
   } catch (error) {
     console.error("Error fetching assigned orders:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Failed to fetch assigned orders",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-// Get washing orders for logged-in  (vendor)
 export const getWashingOrdersForVendor = async (req, res) => {
   try {
     const orders = await Order.find({
       assignedDhobi: req.user.uid,
-      status: { $in: ["Washing", "Washed"] },
+      status: { $in: ["Washing", "Washed", "Picking Up"] },
     })
-      .populate("assignedDhobi", "name phone address") 
-      .populate("pickupClaimedBy", "name phone") 
-      .populate("deliveryClaimedBy", "name phone"); 
+      .populate("assignedDhobi", "name phone address")
+      .populate("pickupClaimedBy", "name phone")
+      .populate("deliveryClaimedBy", "name phone");
 
     res.json({ orders });
   } catch (error) {
@@ -264,7 +391,6 @@ export const getWashingOrdersForVendor = async (req, res) => {
   }
 };
 
-// Get all delivery orders (for delivery boys)
 export const getDeliveryOrders = async (req, res) => {
   try {
     const orders = await Order.find({ status: "Washed" })
@@ -278,7 +404,6 @@ export const getDeliveryOrders = async (req, res) => {
   }
 };
 
-// User verifies OTP for delivery pickup
 export const verifyOtpForDeliveryPickup = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -312,7 +437,6 @@ export const verifyOtpForDeliveryPickup = async (req, res) => {
   }
 };
 
-//  User verifies OTP for final delivery
 export const verifyOtpForFinalDelivery = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -346,7 +470,6 @@ export const verifyOtpForFinalDelivery = async (req, res) => {
   }
 };
 
-// Get all delivery orders claimed by delivery boy
 export const getMyDeliveryOrders = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -360,7 +483,6 @@ export const getMyDeliveryOrders = async (req, res) => {
   }
 };
 
-// Claim Pickup 
 export const claimPickupOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -390,7 +512,6 @@ export const claimPickupOrder = async (req, res) => {
   }
 };
 
-// Claim Delivery Order 
 export const claimDeliveryOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -407,7 +528,7 @@ export const claimDeliveryOrder = async (req, res) => {
     }
 
     order.deliveryClaimedBy = req.user.uid;
-    order.status = "Picking Up"; 
+    order.status = "Picking Up";
     await order.save();
 
     user.claimedOrders.push(orderId);
@@ -420,7 +541,6 @@ export const claimDeliveryOrder = async (req, res) => {
   }
 };
 
-// Get all pickup orders claimed by logged-in delivery boy
 export const getMyPickupOrders = async (req, res) => {
   try {
     const userId = req.user.uid;
