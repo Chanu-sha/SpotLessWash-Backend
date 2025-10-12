@@ -7,7 +7,6 @@ export const startDailyEarningsReset = () => {
   // Run at 00:00 (midnight) every day
   cron.schedule('0 0 * * *', async () => {
     try {
-      console.log('Running daily earnings reset job...');
       
       // Reset delivery boy wallets
       const deliveryWallets = await Wallet.find({ todaysEarnings: { $gt: 0 } });
@@ -29,7 +28,6 @@ export const startDailyEarningsReset = () => {
         await wallet.save();
       }
       
-      console.log(`Daily earnings reset completed for ${deliveryWallets.length} delivery boy wallets and ${vendorWallets.length} vendor wallets`);
     } catch (error) {
       console.error('Error in daily earnings reset:', error);
     }
@@ -37,14 +35,11 @@ export const startDailyEarningsReset = () => {
     timezone: "Asia/Kolkata"
   });
   
-  console.log('Daily earnings reset cron job started for delivery boys and vendors');
 };
 
 // Updated manual reset function
 export const manualEarningsReset = async () => {
-  try {
-    console.log('Running manual earnings reset...');
-    
+  try {    
     let deliveryWalletsUpdated = 0;
     let vendorWalletsUpdated = 0;
     
@@ -76,10 +71,7 @@ export const manualEarningsReset = async () => {
         await wallet.save();
         vendorWalletsUpdated++;
       }
-    }
-    
-    console.log(`Manual earnings reset completed for ${deliveryWalletsUpdated} delivery boy wallets and ${vendorWalletsUpdated} vendor wallets`);
-    
+    }    
     return { 
       success: true, 
       deliveryWalletsUpdated, 

@@ -7,7 +7,6 @@ import orderRoutes from "./routes/orderRoutes.js";
 import deliveryBoyRoutes from "./routes/deliveryBoyRoutes.js";
 import adminRoutes from "./routes/admin.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
-// ADD THIS IMPORT
 import { startDailyEarningsReset, manualEarningsReset } from "./utils/cronJobs.js";
 
 dotenv.config();
@@ -18,8 +17,6 @@ app.use(express.json());
 
 // Connect to MongoDB
 connectDB().then(() => {
-  // START CRON JOB AFTER DB CONNECTION
-  console.log('Starting daily earnings reset cron job...');
   startDailyEarningsReset();
 });
 

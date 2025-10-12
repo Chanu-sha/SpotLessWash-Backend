@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const deliveryBoySchema = new mongoose.Schema({
   name: { type: String, required: true },
-  phone: { type: String, required: true, unique: true }, // unique index is enough
+  phone: { type: String, required: true, unique: true }, 
   email: { type: String, required: true },
   password: { type: String, required: true },
   approved: { type: Boolean, default: false },
@@ -32,7 +32,6 @@ const deliveryBoySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Keep only this index
 deliveryBoySchema.index({ approved: 1, rejected: 1 });
 
 deliveryBoySchema.pre('findOneAndUpdate', function(next) {

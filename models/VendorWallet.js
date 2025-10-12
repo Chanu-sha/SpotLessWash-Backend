@@ -36,7 +36,6 @@ const vendorWalletSchema = new mongoose.Schema({
 });
 
 // Method to add earnings from completed order
-// NOW ACCEPTS ALREADY CALCULATED VENDOR EARNINGS (NOT ORDER AMOUNT)
 vendorWalletSchema.methods.addEarningsFromOrder = function(vendorEarnings) {
   const today = new Date();
   const lastEarningDate = new Date(this.lastEarningDate);
@@ -48,8 +47,7 @@ vendorWalletSchema.methods.addEarningsFromOrder = function(vendorEarnings) {
     this.todaysEarnings = 0;
   }
   
-  // vendorEarnings is already calculated in controller (per-piece calculation)
-  // No need to apply 85% here - just use the amount directly
+  // vendorEarnings calculated in controller (per-piece calculation)
   this.todaysEarnings += vendorEarnings;
   this.totalEarnings += vendorEarnings;
   this.completedOrders += 1;

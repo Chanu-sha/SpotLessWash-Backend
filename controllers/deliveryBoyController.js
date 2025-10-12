@@ -3,8 +3,19 @@ import DeliveryBoy from "../models/DeliveryBoy.js";
 import { createToken } from "../middlewares/jwtHelper.js";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
-import Wallet from '../models/DelieveryWallet.js';
+import Wallet from "../models/DelieveryWallet.js";
 import WithdrawalRequest from "../models/DelieveryWithdrawalRequest.js";
+import dotenv from "dotenv";
+import Razorpay from "razorpay";
+import crypto from "crypto";
+import CODWallet from "../models/CODWallet.js";
+
+dotenv.config();
+
+const razorpayInstance = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 // Configure Cloudinary
 cloudinary.config({
@@ -13,7 +24,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure multer for memory storage (temporary)
+// Configure multer for memory storage 
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -219,7 +230,7 @@ export const updateDeliveryBoyProfile = async (req, res) => {
   }
 };
 
-// Get All Users (photos already have URLs)
+// Get All Users 
 export const getAllUsers = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
     return res.status(403).json({ message: "Unauthorized" });
@@ -232,7 +243,7 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// Get Pending Requests (photos already have URLs)
+// Get Pending Requests 
 export const getPendingRequests = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
     return res.status(403).json({ message: "Unauthorized" });
@@ -289,6 +300,7 @@ const deleteFromCloudinary = async (publicId) => {
     console.error("Error deleting from Cloudinary:", error);
   }
 };
+
 // Get wallet details
 export const getWalletDetails = async (req, res) => {
   try {
@@ -397,6 +409,7 @@ export const resetDeliveryBoyPassword = async (req, res) => {
   }
 };
 
+// Increment PickupCount count
 export const incrementPickupCount = async (req, res) => {
   try {
     const deliveryBoyId = req.body.deliveryBoyId || req.user.uid;
@@ -671,5 +684,245 @@ export const updateWithdrawalStatus = async (req, res) => {
   } catch (error) {
     console.error("Error updating withdrawal status:", error);
     res.status(500).json({ message: "Failed to update withdrawal status" });
+  }
+};
+
+// ============= COD WALLET FUNCTIONS - ADD TO END OF FILE =============
+
+// Get COD Wallet Details
+export const getCODWalletDetails = async (req, res) => {
+  try {
+    let codWallet = await CODWallet.findOne({
+      deliveryBoyId: req.user.uid,
+    });
+
+    if (!codWallet) {
+      codWallet = await CODWallet.create({ deliveryBoyId: req.user.uid });
+    }
+
+    // Calculate any new penalties
+    await codWallet.calculatePenalties();
+
+    // Separate pending and submitted collections
+    const pendingCollections = codWallet.collections.filter(
+      (c) => !c.submitted
+    );
+    const submittedCollections = codWallet.collections.filter(
+      (c) => c.submitted
+    );
+
+    // Get last collection date from pending collections
+    let lastCollectionDate = null;
+    if (pendingCollections.length > 0) {
+      const sortedPending = [...pendingCollections].sort(
+        (a, b) => new Date(b.collectedAt) - new Date(a.collectedAt)
+      );
+      lastCollectionDate = sortedPending[0].collectedAt;
+    }
+
+    res.json({
+      totalCollected: codWallet.totalCollected,
+      pendingSubmission: codWallet.pendingSubmission,
+      totalSubmitted: codWallet.totalSubmitted,
+      penaltyAmount: codWallet.totalPenalty,
+      lastCollectionDate,
+      lastSubmissionDate: codWallet.lastSubmissionDate,
+      pendingCollections,
+      submittedCollections,
+      submissionHistory: [], // Will be populated from collections
+    });
+  } catch (error) {
+    console.error("Error fetching COD wallet:", error);
+    res.status(500).json({ message: "Failed to fetch COD wallet details" });
+  }
+};
+
+// Create Razorpay Order for COD Submission
+export const createCODSubmissionOrder = async (req, res) => {
+  try {
+    const codWallet = await CODWallet.findOne({ deliveryBoyId: req.user.uid });
+
+    if (!codWallet || codWallet.pendingSubmission === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending COD amount to submit",
+      });
+    }
+
+    // Calculate penalties
+    await codWallet.calculatePenalties();
+
+    const totalAmount = codWallet.pendingSubmission;
+    const amountInPaise = Math.round(totalAmount * 100);
+
+    // Generate short receipt ID (max 40 chars for Razorpay)
+    const timestamp = Date.now().toString().slice(-10); // Last 10 digits
+    const uidShort = req.user.uid.toString().slice(-8); // Last 8 chars of ObjectId
+    const receiptId = `COD${uidShort}${timestamp}`; // Max 21 chars
+
+    const options = {
+      amount: amountInPaise,
+      currency: "INR",
+      receipt: receiptId,
+      notes: {
+        deliveryBoyId: req.user.uid.toString(),
+        type: "cod_submission",
+        penaltyAmount: codWallet.totalPenalty,
+      },
+    };
+
+    razorpayInstance.orders.create(options, (err, order) => {
+      if (!err) {
+        console.log("COD Submission Razorpay order created:", order.id);
+
+        res.status(200).json({
+          success: true,
+          message: "Payment order created",
+          order_id: order.id,
+          amount: amountInPaise,
+          currency: order.currency,
+          key_id: process.env.RAZORPAY_KEY_ID,
+          totalAmount,
+          penaltyAmount: codWallet.totalPenalty,
+          pendingCollectionsCount: codWallet.collections.filter(
+            (c) => !c.submitted
+          ).length,
+        });
+      } else {
+        console.error("Razorpay order creation error:", err);
+        res.status(400).json({
+          success: false,
+          message: "Failed to create payment order",
+          error: err.message,
+        });
+      }
+    });
+  } catch (error) {
+    console.error("Create COD submission order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payment order",
+      error: error.message,
+    });
+  }
+};
+
+// Verify Payment and Submit COD Collection
+export const verifyCODSubmissionPayment = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing payment verification parameters",
+      });
+    }
+
+    // Verify signature
+    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSign = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(sign.toString())
+      .digest("hex");
+
+    if (razorpay_signature !== expectedSign) {
+      console.error("Invalid signature for COD submission payment");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment signature",
+      });
+    }
+
+    // Payment verified, now submit COD collection
+    let codWallet = await CODWallet.findOne({ deliveryBoyId: req.user.uid });
+
+    if (!codWallet || codWallet.pendingSubmission === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending COD amount to submit",
+      });
+    }
+
+    // Submit all pending collections
+    const submittedAmount = await codWallet.submitAllPending();
+
+    // Generate receipt number
+    const receiptNumber = `REC${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+    console.log("COD submission successful:", {
+      deliveryBoyId: req.user.uid,
+      amount: submittedAmount,
+      receiptNumber,
+      paymentId: razorpay_payment_id,
+    });
+
+    res.json({
+      success: true,
+      message: "COD collection submitted successfully",
+      receiptNumber,
+      submittedAmount,
+      totalSubmitted: codWallet.totalSubmitted,
+      payment_id: razorpay_payment_id,
+    });
+  } catch (error) {
+    console.error("Verify COD submission payment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Payment verification and submission failed",
+      error: error.message,
+    });
+  }
+};
+
+// Get COD Collection History
+export const getCODCollectionHistory = async (req, res) => {
+  try {
+    const codWallet = await CODWallet.findOne({
+      deliveryBoyId: req.user.uid,
+    });
+
+    if (!codWallet) {
+      return res.json({
+        pendingCollections: [],
+        submittedCollections: [],
+      });
+    }
+
+    // Separate pending and submitted
+    const pendingCollections = codWallet.collections
+      .filter((c) => !c.submitted)
+      .sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    const submittedCollections = codWallet.collections
+      .filter((c) => c.submitted)
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    res.json({
+      pendingCollections,
+      submittedCollections,
+    });
+  } catch (error) {
+    console.error("Error fetching COD history:", error);
+    res.status(500).json({ message: "Failed to fetch COD collection history" });
+  }
+};
+
+// Admin: Get all COD submissions
+export const getAllCODSubmissions = async (req, res) => {
+  if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const codWallets = await CODWallet.find()
+      .populate("deliveryBoyId", "name phone email")
+      .sort({ updatedAt: -1 });
+
+    res.json(codWallets);
+  } catch (error) {
+    console.error("Error fetching COD submissions:", error);
+    res.status(500).json({ message: "Failed to fetch COD submissions" });
   }
 };

@@ -39,7 +39,7 @@ const withdrawalRequestSchema = new mongoose.Schema({
     type: Date
   },
   processedBy: {
-    type: String // Admin ID or name
+    type: String 
   }
 }, {
   timestamps: true

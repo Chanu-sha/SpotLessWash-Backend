@@ -18,6 +18,7 @@ import {
   getMyDeliveryOrders,
   createRazorpayOrder,
   verifyRazorpayPayment,
+  regenerateOTP,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 import { verifyFirebaseToken } from "../middlewares/authMiddleware.js";
@@ -63,5 +64,8 @@ router.post("/claimdlievery/:orderId", verifyToken, claimDeliveryOrder);
 // My deals routes
 router.get("/my-pickup-orders", verifyToken, getMyPickupOrders);
 router.get("/my-delivery-orders", verifyToken, getMyDeliveryOrders);
+
+router.post("/regenerate-otp/:orderId", verifyToken, regenerateOTP);
+
 
 export default router;

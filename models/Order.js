@@ -37,7 +37,21 @@ const orderSchema = new mongoose.Schema({
     default: null,
   },
   
-  // ✅ ADD THESE FIELDS FOR WALLET FUNCTIONALITY
+  paymentMethod: {
+    type: String,
+    enum: ['online', 'cod'],
+    default: 'cod'
+  },
+  paymentId: {
+    type: String,
+    default: null
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'paid', 'collected', 'failed'],
+    default: 'pending'
+  },
+  
   walletUpdated: {
     type: Boolean,
     default: false
@@ -48,11 +62,10 @@ const orderSchema = new mongoose.Schema({
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
-// Add index for better performance
 orderSchema.index({ vendorId: 1, status: 1 });
 orderSchema.index({ vendorId: 1, completedAt: 1 });
 orderSchema.index({ vendorId: 1, walletUpdated: 1 });

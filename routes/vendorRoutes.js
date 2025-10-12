@@ -19,7 +19,6 @@ import {
   updateStoreImage,
   deleteStoreImage,
   uploadVendorPhotos,
-  // NEW WALLET FUNCTIONS
   completeWashingOrder,
   getVendorWalletDetails,
   getVendorStats,

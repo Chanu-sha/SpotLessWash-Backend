@@ -1,29 +1,27 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 import Order from "../models/Order.js";
 import Vendor from "../models/Vendor.js";
 import DeliveryBoy from "../models/DeliveryBoy.js";
+import CODWallet from "../models/CODWallet.js";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 
 dotenv.config();
 
-// Initialize Razorpay (YouTube style)
 const razorpayInstance = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// Generate 4-digit OTP
 function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// Create Razorpay Order (YouTube style implementation)
+// Create Razorpay Order
 export const createRazorpayOrder = async (req, res) => {
   try {
     const { amount, currency, receipt } = req.body;
 
-    // Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({
         success: false,
@@ -35,34 +33,32 @@ export const createRazorpayOrder = async (req, res) => {
 
     const options = {
       amount: amountInPaise,
-      currency: currency || 'INR',
-      receipt: receipt || `receipt_${Date.now()}`
+      currency: currency || "INR",
+      receipt: receipt || `receipt_${Date.now()}`,
     };
 
     razorpayInstance.orders.create(options, (err, order) => {
       if (!err) {
-        console.log("Razorpay order created:", order.id);
-        
+
         res.status(200).json({
           success: true,
-          msg: 'Order Created',
+          msg: "Order Created",
           order_id: order.id,
           amount: amountInPaise,
           currency: order.currency,
           key_id: process.env.RAZORPAY_KEY_ID,
           product_name: "Laundry Services",
-          description: req.body.description || "Laundry service payment"
+          description: req.body.description || "Laundry service payment",
         });
       } else {
         console.error("Razorpay order creation error:", err);
         res.status(400).json({
           success: false,
-          msg: 'Something went wrong!',
-          error: err.message
+          msg: "Something went wrong!",
+          error: err.message,
         });
       }
     });
-
   } catch (error) {
     console.error("Create Razorpay order error:", error);
     res.status(500).json({
@@ -73,12 +69,12 @@ export const createRazorpayOrder = async (req, res) => {
   }
 };
 
-// Verify Razorpay Payment (Enhanced with YouTube style)
+// Verify Razorpay Payment
 export const verifyRazorpayPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      req.body;
 
-    // Validate required fields
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({
         success: false,
@@ -86,17 +82,13 @@ export const verifyRazorpayPayment = async (req, res) => {
       });
     }
 
-    // Generate signature
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(sign.toString())
       .digest("hex");
 
-    // Verify signature
     if (razorpay_signature === expectedSign) {
-      console.log("Payment verified successfully:", razorpay_payment_id);
-      
       res.json({
         success: true,
         message: "Payment verified successfully",
@@ -104,7 +96,7 @@ export const verifyRazorpayPayment = async (req, res) => {
       });
     } else {
       console.error("Invalid signature for payment:", razorpay_payment_id);
-      
+
       res.status(400).json({
         success: false,
         message: "Invalid payment signature",
@@ -120,7 +112,7 @@ export const verifyRazorpayPayment = async (req, res) => {
   }
 };
 
-// Place Order (Same as before, no changes needed)
+// Place Order
 export const placeOrder = async (req, res) => {
   try {
     const {
@@ -137,7 +129,6 @@ export const placeOrder = async (req, res) => {
       paymentStatus,
     } = req.body;
 
-    // Validation
     if (!/^\d{10}$/.test(userMobile)) {
       return res
         .status(400)
@@ -151,10 +142,12 @@ export const placeOrder = async (req, res) => {
       return res.status(400).json({ message: "Invalid payment method" });
     }
 
-    // Validate online payment
-    if (paymentMethod === 'online' && (!paymentId || paymentStatus !== 'completed')) {
-      return res.status(400).json({ 
-        message: "Invalid payment details for online payment" 
+    if (
+      paymentMethod === "online" &&
+      (!paymentId || paymentStatus !== "completed")
+    ) {
+      return res.status(400).json({
+        message: "Invalid payment details for online payment",
       });
     }
 
@@ -163,7 +156,6 @@ export const placeOrder = async (req, res) => {
       0
     );
 
-    // Add delivery charges
     totalPrice += 50;
 
     const otp = generateOTP();
@@ -183,12 +175,10 @@ export const placeOrder = async (req, res) => {
       assignedDhobi,
       paymentMethod,
       paymentId: paymentId || null,
-      paymentStatus: paymentStatus || "pending",
+      paymentStatus: paymentMethod === "online" ? "paid" : "pending",
     });
 
     await order.save();
-
-    console.log(`Order placed successfully: ${order._id}, Payment: ${paymentMethod}`);
 
     res.status(201).json({
       message: "Order placed successfully",
@@ -196,14 +186,14 @@ export const placeOrder = async (req, res) => {
     });
   } catch (error) {
     console.error("Order Error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Server error",
-      error: error.message 
+      error: error.message,
     });
   }
 };
 
-// All other functions remain exactly the same
+// Get User Orders
 export const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.user.uid }).sort({
@@ -224,6 +214,7 @@ export const getUserOrders = async (req, res) => {
   }
 };
 
+// Track Order
 export const trackOrder = async (req, res) => {
   try {
     const order = await Order.findOne({
@@ -239,6 +230,7 @@ export const trackOrder = async (req, res) => {
   }
 };
 
+// Update Order Status
 export const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -277,10 +269,11 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
+// Verify OTP and Complete Pickup Order (WITH COD CONFIRMATION)
 export const verifyOtpAndCompleteOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { otp } = req.body;
+    const { otp, codConfirmed } = req.body;
 
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
@@ -296,15 +289,56 @@ export const verifyOtpAndCompleteOrder = async (req, res) => {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
+    // COD Check - Only for pickup orders with COD payment
+    if (order.paymentMethod === "cod" && order.status === "Ready for Pickup") {
+      if (!codConfirmed) {
+        return res.status(400).json({
+          message: "Please confirm COD collection",
+          requiresCODConfirmation: true,
+          orderDetails: {
+            totalPrice: order.totalPrice,
+            userName: order.userName,
+            userMobile: order.userMobile,
+          },
+        });
+      }
+
+      // Add to COD wallet
+      let codWallet = await CODWallet.findOne({ deliveryBoyId: req.user.uid });
+      if (!codWallet) {
+        codWallet = await CODWallet.create({ deliveryBoyId: req.user.uid });
+      }
+
+      await codWallet.addCollection({
+        orderId: order._id,
+        deliveryBoyId: req.user.uid,
+        amount: order.totalPrice,
+        orderDetails: {
+          userName: order.userName,
+          userMobile: order.userMobile,
+          serviceName: order.services[0]?.name || "N/A",
+          quantity: order.services[0]?.quantity || 1,
+        },
+      });
+
+      order.paymentStatus = "collected";
+    }
+
     order.status = "Picked Up";
     await order.save();
 
-    res.json({ message: "Order marked as completed", order });
+    res.json({
+      message: "Order marked as completed",
+      order,
+      codCollected: order.paymentMethod === "cod",
+    });
   } catch (error) {
+    console.error("Verify OTP Error:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
+// Verify OTP and Receive by Vendor
 export const verifyOtpAndReceiveByVendor = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -333,6 +367,7 @@ export const verifyOtpAndReceiveByVendor = async (req, res) => {
   }
 };
 
+// Get Unclaimed Orders
 export const getUnclaimedOrders = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -347,6 +382,7 @@ export const getUnclaimedOrders = async (req, res) => {
   }
 };
 
+// Get Assigned Orders
 export const getAssignedOrders = async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.user.uid);
@@ -374,6 +410,7 @@ export const getAssignedOrders = async (req, res) => {
   }
 };
 
+// Get Washing Orders for Vendor
 export const getWashingOrdersForVendor = async (req, res) => {
   try {
     const orders = await Order.find({
@@ -391,6 +428,7 @@ export const getWashingOrdersForVendor = async (req, res) => {
   }
 };
 
+// Get Delivery Orders
 export const getDeliveryOrders = async (req, res) => {
   try {
     const orders = await Order.find({ status: "Washed" })
@@ -404,6 +442,7 @@ export const getDeliveryOrders = async (req, res) => {
   }
 };
 
+// Verify OTP for Delivery Pickup from Vendor
 export const verifyOtpForDeliveryPickup = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -437,10 +476,11 @@ export const verifyOtpForDeliveryPickup = async (req, res) => {
   }
 };
 
+// Verify OTP for Final Delivery (WITH COD CONFIRMATION)
 export const verifyOtpForFinalDelivery = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { otp } = req.body;
+    const { otp, codConfirmed } = req.body;
 
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
@@ -458,10 +498,49 @@ export const verifyOtpForFinalDelivery = async (req, res) => {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
+    // COD Check - Only for delivery orders with COD payment that hasn't been collected yet
+    if (order.paymentMethod === "cod" && order.paymentStatus !== "collected") {
+      if (!codConfirmed) {
+        return res.status(400).json({
+          message: "Please confirm COD collection",
+          requiresCODConfirmation: true,
+          orderDetails: {
+            totalPrice: order.totalPrice,
+            userName: order.userName,
+            userMobile: order.userMobile,
+          },
+        });
+      }
+
+      // Add to COD wallet
+      let codWallet = await CODWallet.findOne({ deliveryBoyId: req.user.uid });
+      if (!codWallet) {
+        codWallet = await CODWallet.create({ deliveryBoyId: req.user.uid });
+      }
+
+      await codWallet.addCollection({
+        orderId: order._id,
+        deliveryBoyId: req.user.uid,
+        amount: order.totalPrice,
+        orderDetails: {
+          userName: order.userName,
+          userMobile: order.userMobile,
+          serviceName: order.services[0]?.name || "N/A",
+          quantity: order.services[0]?.quantity || 1,
+        },
+      });
+
+      order.paymentStatus = "collected";
+    }
+
     order.status = "Delivered";
     await order.save();
 
-    res.json({ message: "Order delivered successfully", order });
+    res.json({
+      message: "Order delivered successfully",
+      order,
+      codCollected: order.paymentMethod === "cod",
+    });
   } catch (error) {
     console.error("Final delivery OTP error:", error);
     res
@@ -470,6 +549,7 @@ export const verifyOtpForFinalDelivery = async (req, res) => {
   }
 };
 
+// Get My Delivery Orders
 export const getMyDeliveryOrders = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -483,6 +563,7 @@ export const getMyDeliveryOrders = async (req, res) => {
   }
 };
 
+// Claim Pickup Order
 export const claimPickupOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -512,6 +593,7 @@ export const claimPickupOrder = async (req, res) => {
   }
 };
 
+// Claim Delivery Order
 export const claimDeliveryOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -541,6 +623,7 @@ export const claimDeliveryOrder = async (req, res) => {
   }
 };
 
+// Get My Pickup Orders
 export const getMyPickupOrders = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -553,5 +636,80 @@ export const getMyPickupOrders = async (req, res) => {
   } catch (error) {
     console.error("Get My Pickup Orders Error:", error);
     res.status(500).json({ message: "Failed to fetch pickup orders" });
+  }
+};
+
+// Regenerate OTP for Completed Orders (Works for both Delivery Boy & Vendor)
+export const regenerateOTP = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Authorization check - Different for delivery boys and vendors
+    let isAuthorized = false;
+    let allowedStatus = [];
+
+    // Check if user is delivery boy (pickup)
+    if (
+      order.pickupClaimedBy &&
+      order.pickupClaimedBy.toString() === req.user.uid.toString()
+    ) {
+      isAuthorized = true;
+      allowedStatus = ["Picked Up"]; // Delivery boy can regenerate after pickup
+    }
+
+    // Check if user is vendor (assigned dhobi)
+    if (
+      order.assignedDhobi &&
+      order.assignedDhobi.toString() === req.user.uid.toString()
+    ) {
+      isAuthorized = true;
+      allowedStatus = ["Washed", "Picking Up"]; // Vendor can regenerate for washed orders
+    }
+
+    // Check if user is delivery boy (delivery)
+    if (
+      order.deliveryClaimedBy &&
+      order.deliveryClaimedBy.toString() === req.user.uid.toString()
+    ) {
+      isAuthorized = true;
+      allowedStatus = ["Delievery Picked Up"]; 
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({
+        message: "Not authorized to regenerate OTP for this order",
+      });
+    }
+
+    // Check if order status allows OTP regeneration
+    if (!allowedStatus.includes(order.status)) {
+      return res.status(400).json({
+        message: `OTP can only be regenerated for orders with status: ${allowedStatus.join(
+          ", "
+        )}`,
+      });
+    }
+
+    // Generate new OTP
+    const newOTP = generateOTP();
+    order.otp = newOTP;
+    await order.save();
+
+    res.json({
+      success: true,
+      message: "New OTP generated successfully",
+      newOtp: newOTP,
+    });
+  } catch (error) {
+    console.error("Regenerate OTP error:", error);
+    res.status(500).json({
+      message: "Failed to regenerate OTP",
+      error: error.message,
+    });
   }
 };

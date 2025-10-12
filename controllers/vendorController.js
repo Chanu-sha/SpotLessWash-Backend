@@ -724,7 +724,7 @@ export const completeWashingOrder = async (req, res) => {
     // Mark order as wallet updated to prevent double counting
     await Order.findByIdAndUpdate(orderId, {
       walletUpdated: true,
-      completedAt: new Date(), // ADD completion timestamp
+      completedAt: new Date(), 
     });
 
     // Create detailed service breakdown
@@ -761,6 +761,7 @@ export const completeWashingOrder = async (req, res) => {
     res.status(500).json({ message: "Failed to complete order" });
   }
 };
+
 // Get vendor wallet details
 export const getVendorWalletDetails = async (req, res) => {
   try {
@@ -839,7 +840,7 @@ export const getTodaysCompletedOrders = async (req, res) => {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // ✅ Filter orders that were marked as washed TODAY
+    // Filter orders that were marked as washed TODAY
     const orders = await Order.find({
       vendorId: req.user.uid,
       walletUpdated: true, // Only orders where earnings were added
@@ -889,7 +890,7 @@ export const getPastCompletedOrders = async (req, res) => {
     // Fetch orders that were completed before today
     const orders = await Order.find({
       vendorId: req.user.uid,
-      walletUpdated: true, // Only orders where earnings were added
+      walletUpdated: true, 
       completedAt: { $lt: todayStart },
     })
       .populate("userId", "name mobile")

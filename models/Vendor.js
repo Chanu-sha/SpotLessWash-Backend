@@ -3,17 +3,14 @@ import mongoose from "mongoose";
 const serviceSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
-  basePrice: { type: Number, required: true, min: 0 }, // Vendor's entered price
+  basePrice: { type: Number, required: true, min: 0 }, 
 }, { timestamps: true });
 
-// Add virtual fields for pricing calculations
 serviceSchema.virtual('displayPrice').get(function() {
-  // Show 30% higher price for strikethrough effect
   return Math.ceil(this.basePrice * 1.30);
 });
 
 serviceSchema.virtual('appPrice').get(function() {
-  // User actually pays: vendor price + 15% (app margin)
   return Math.ceil(this.basePrice * 1.15);
 });
 
@@ -23,7 +20,6 @@ serviceSchema.virtual('discountPercentage').get(function() {
   return Math.round(((displayPrice - appPrice) / displayPrice) * 100);
 });
 
-// Ensure virtual fields are included in JSON output
 serviceSchema.set('toJSON', { virtuals: true });
 serviceSchema.set('toObject', { virtuals: true });
 
@@ -61,11 +57,9 @@ const vendorSchema = new mongoose.Schema({
   rejectionReason: String,
 }, { timestamps: true });
 
-// Indexes
 vendorSchema.index({ email: 1 });
 vendorSchema.index({ approved: 1, rejected: 1 });
 
-// Pre-save middleware
 vendorSchema.pre('findOneAndUpdate', function(next) {
   const update = this.getUpdate();
   
@@ -83,7 +77,6 @@ vendorSchema.pre('findOneAndUpdate', function(next) {
   next();
 });
 
-// Virtuals
 vendorSchema.virtual('serviceCount').get(function() {
   return this.services?.length ?? 0;
 });
@@ -92,14 +85,12 @@ vendorSchema.virtual('storeImageCount').get(function() {
   return this.storeImages?.length ?? 0;
 });
 
-// ✅ NEW: Virtual relation to Orders
 vendorSchema.virtual("assignedOrders", {
-  ref: "Order",               // reference model
-  localField: "_id",          // Vendor _id
-  foreignField: "vendorId"    // field in Order
+  ref: "Order",               
+  localField: "_id",          
+  foreignField: "vendorId"    
 });
 
-// Ensure virtual fields are included in JSON output
 vendorSchema.set('toJSON', { virtuals: true });
 vendorSchema.set('toObject', { virtuals: true });
 

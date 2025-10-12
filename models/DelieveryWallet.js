@@ -50,7 +50,6 @@ walletSchema.methods.addEarnings = function(amount) {
   return this.save();
 };
 
-// Method to reset daily earnings (called by cron job)
 walletSchema.methods.resetDailyEarnings = function() {
   this.withdrawableBalance += this.todaysEarnings;
   this.todaysEarnings = 0;
