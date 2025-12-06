@@ -17,6 +17,55 @@ function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
+/**
+ * INTERNAL: Delivery charge calculator
+ * Rules:
+ *  - First order => FREE (0)
+ *  - Subtotal ≥ 399 => FREE (0)
+ *  - Otherwise => 50
+ */
+async function calculateDeliveryCharge(userId, subtotal) {
+  if (subtotal >= 399) return 0;
+  const previousOrders = await Order.countDocuments({ userId });
+  if (previousOrders === 0) return 0;
+  return 50;
+}
+
+/**
+ * PUBLIC: Delivery charge quote (auth required)
+ * GET /order/delivery-charge?subtotal=<number>
+ * Resp: { success, subtotal, deliveryCharge, total, reason }
+ *   reason: "FIRST_ORDER" | "THRESHOLD" | "NONE"
+ */
+export const getDeliveryChargeQuote = async (req, res) => {
+  try {
+    const raw = req.query.subtotal;
+    const subtotal = Number(raw || 0);
+    if (isNaN(subtotal) || subtotal < 0) {
+      return res.status(400).json({ message: "Invalid subtotal" });
+    }
+
+    const userId = req.user.uid;
+    const deliveryCharge = await calculateDeliveryCharge(userId, subtotal);
+
+    res.json({
+      success: true,
+      subtotal,
+      deliveryCharge,
+      total: subtotal + deliveryCharge,
+      reason:
+        deliveryCharge === 0
+          ? subtotal >= 399
+            ? "THRESHOLD"
+            : "FIRST_ORDER"
+          : "NONE",
+    });
+  } catch (error) {
+    console.error("Delivery charge quote error:", error);
+    res.status(500).json({ message: "Failed to get delivery charge quote" });
+  }
+};
+
 // Create Razorpay Order
 export const createRazorpayOrder = async (req, res) => {
   try {
@@ -39,7 +88,6 @@ export const createRazorpayOrder = async (req, res) => {
 
     razorpayInstance.orders.create(options, (err, order) => {
       if (!err) {
-
         res.status(200).json({
           success: true,
           msg: "Order Created",
@@ -112,7 +160,7 @@ export const verifyRazorpayPayment = async (req, res) => {
   }
 };
 
-// Place Order
+// Place Order (UPDATED to use backend delivery charge)
 export const placeOrder = async (req, res) => {
   try {
     const {
@@ -151,12 +199,17 @@ export const placeOrder = async (req, res) => {
       });
     }
 
-    let totalPrice = services.reduce(
+    // Subtotal from services
+    const subtotal = services.reduce(
       (sum, s) => sum + (s.price || 0) * (s.quantity || 1),
       0
     );
 
-    totalPrice += 50;
+    // Calculate delivery charge using rules
+    const deliveryCharge = await calculateDeliveryCharge(req.user.uid, subtotal);
+
+    // Total = subtotal + delivery
+    const totalPrice = subtotal + deliveryCharge;
 
     const otp = generateOTP();
 
@@ -169,6 +222,8 @@ export const placeOrder = async (req, res) => {
       vendorName,
       vendorAddress,
       services,
+      // NEW: store deliveryCharge
+      deliveryCharge,
       totalPrice,
       otp,
       status: "Scheduled",
@@ -677,7 +732,7 @@ export const regenerateOTP = async (req, res) => {
       order.deliveryClaimedBy.toString() === req.user.uid.toString()
     ) {
       isAuthorized = true;
-      allowedStatus = ["Delievery Picked Up"]; 
+      allowedStatus = ["Delievery Picked Up"];
     }
 
     if (!isAuthorized) {

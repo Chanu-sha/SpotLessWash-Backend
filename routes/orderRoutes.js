@@ -19,17 +19,32 @@ import {
   createRazorpayOrder,
   verifyRazorpayPayment,
   regenerateOTP,
+  // NEW: add import
+  getDeliveryChargeQuote,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middlewares/jwtHelper.js";
 import { verifyFirebaseToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// Payment routes
+/**
+ * Payment routes
+ */
 router.post("/payment/create-order", verifyFirebaseToken, createRazorpayOrder);
 router.post("/payment/verify", verifyFirebaseToken, verifyRazorpayPayment);
 
-// Order routes
+/**
+ * NEW: Delivery charge quote (backend-calculated)
+ * Rules: First order -> FREE delivery, or when subtotal ≥ 399 -> FREE
+ * Auth: Firebase (same as place order / payment)
+ * Usage: GET /order/delivery-charge?subtotal=123
+ * Response: { success, subtotal, deliveryCharge, total, reason }
+ */
+router.get("/delivery-charge", verifyFirebaseToken, getDeliveryChargeQuote);
+
+/**
+ * Order routes
+ */
 router.post("/place", verifyFirebaseToken, placeOrder);
 router.get("/my-orders", verifyFirebaseToken, getUserOrders);
 router.get("/track/:orderId", verifyFirebaseToken, trackOrder);
@@ -37,35 +52,29 @@ router.post("/verify-otp/:orderId", verifyToken, verifyOtpAndCompleteOrder);
 
 router.get("/unclaimed", getUnclaimedOrders);
 router.get("/assigned", verifyToken, getAssignedOrders);
-router.post(
-  "/verify-otp-dhobi/:orderId",
-  verifyToken,
-  verifyOtpAndReceiveByVendor
-);
+router.post("/verify-otp-dhobi/:orderId", verifyToken, verifyOtpAndReceiveByVendor);
 router.get("/assigned/washing", verifyToken, getWashingOrdersForVendor);
 
 router.get("/delivery-orders", verifyToken, getDeliveryOrders);
-router.post(
-  "/verify-otp-delivery-pickup/:orderId",
-  verifyToken,
-  verifyOtpForDeliveryPickup
-);
-router.post(
-  "/verify-otp-final-delivery/:orderId",
-  verifyToken,
-  verifyOtpForFinalDelivery
-);
+router.post("/verify-otp-delivery-pickup/:orderId", verifyToken, verifyOtpForDeliveryPickup);
+router.post("/verify-otp-final-delivery/:orderId", verifyToken, verifyOtpForFinalDelivery);
 
 router.patch("/:orderId/status", updateOrderStatus);
 
 router.post("/claimpickup/:orderId", verifyToken, claimPickupOrder);
+
+// Keep original (typo) route for backward compatibility
 router.post("/claimdlievery/:orderId", verifyToken, claimDeliveryOrder);
 
-// My deals routes
+// Non-breaking alias with correct spelling
+router.post("/claimdelivery/:orderId", verifyToken, claimDeliveryOrder);
+
+/**
+ * My deals routes
+ */
 router.get("/my-pickup-orders", verifyToken, getMyPickupOrders);
 router.get("/my-delivery-orders", verifyToken, getMyDeliveryOrders);
 
 router.post("/regenerate-otp/:orderId", verifyToken, regenerateOTP);
-
 
 export default router;
